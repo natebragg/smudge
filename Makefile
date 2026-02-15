@@ -2,6 +2,7 @@ HSFILES=$(wildcard *.hs) $(wildcard app/*.hs) $(wildcard src/*/*.hs) $(wildcard 
 
 CPU_PLAT_RAW=$(shell stack ghc -- -e "(\(Just p) -> p) $$ lookup "'"'"Target platform"'"'" $$(stack ghc -- --info)" | tr -d \")
 CPU_RAW=$(shell echo "$(CPU_PLAT_RAW)" | cut -d "-" -f 1)
+CPU_aarch64=arm64
 CPU_x86_64=amd64
 CPU_i386=i386
 TARGET_CPU=$(CPU_$(CPU_RAW))
