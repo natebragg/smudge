@@ -21,6 +21,7 @@ import Language.Smudge.Parsers.Id (Location)
 
 import Data.Graph.Inductive.Graph (Graph, Context, ufold)
 import Data.Monoid (Monoid, mempty)
+import Data.Kind (Type)
 
 data Severity = ERROR | BUG
     deriving (Show, Eq, Ord)
@@ -42,7 +43,7 @@ instance Show Fault where
     show (RuntimeFault s d) = show s ++ " during execution:\n" ++ d
 
 class AbstractFoldable f where
-    type FoldContext f :: *
+    type FoldContext f :: Type
     afold :: (FoldContext f -> b -> b) -> b -> f -> b
 
 instance (Graph gr) => AbstractFoldable (gr a b) where
@@ -54,7 +55,7 @@ instance AbstractFoldable [a] where
     afold = foldr
 
 class (AbstractFoldable (Representation p), Monoid p) => Passable p where
-    type Representation p :: *
+    type Representation p :: Type
 
     accumulate :: FoldContext (Representation p) -> p -> p
     test :: (StateMachine TaggedName, Representation p) -> p -> [Fault]
