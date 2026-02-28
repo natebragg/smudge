@@ -1,0 +1,36 @@
+Title: Add arguments to side effects
+
+Currently, event payloads are available in C but inaccessible from within
+Smudge.  Thus, to access the data within an event you have to shell out to some
+@function, which prevents or at least complicates a number of interesting use
+cases, the largest of which is responding to events.
+
+To address this, we can introduce the following concrete syntax.
+
+For side-effects:
+
+<<*>>=
+-(e1 arg, @fn arg1 arg2, ...)-
+@
+
+For events handlers:
+
+<<*>>=
+[ event arg1 arg2 -(...)- ]
+@
+
+For events, this creates a struct with the corresponding number of fields of
+the inferred types, allowing for defining the structure of events in Smudge,
+instead of having to do it in C.  The scope of the name of the 'arg' variables
+is the body of the side-effect list for that event.
+
+For @fns, the semantics are as follows:
+1) As in the current implementation, any @fn used in the context of only one
+   event automatically gets a first argument of type event_t
+2) As currently, any @fn used in multiple contexts get no such implicit argument
+3) All explicit @fn arguments must match types exactly, and are put after the
+   implicit argument if present, or otherwise are the only arguments.
+
+Mismatching event handler parameters and args is a compiler error.
+
+Giving an argument the same name as an event is a compiler error.
