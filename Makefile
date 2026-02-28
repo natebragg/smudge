@@ -1,12 +1,12 @@
 HSFILES=$(wildcard *.hs) $(wildcard app/*.hs) $(wildcard src/*/*.hs) $(wildcard src/*/*/*.hs) $(wildcard src/*/*/*/*.hs)
 
-CPU_PLAT_RAW=$(shell stack ghc -- -e "(\(Just p) -> p) $$ lookup "'"'"Target platform"'"'" $$(stack ghc -- --info)" | tr -d \")
-CPU_RAW=$(shell echo "$(CPU_PLAT_RAW)" | cut -d "-" -f 1)
+CPU_PLAT_RAW:=$(shell stack ghc -- -e "(\(Just p) -> p) $$ lookup "'"'"Target platform"'"'" $$(stack ghc -- --info)" | tr -d \")
+CPU_RAW:=$(shell echo "$(CPU_PLAT_RAW)" | cut -d "-" -f 1)
 CPU_aarch64=arm64
 CPU_x86_64=amd64
 CPU_i386=i386
 TARGET_CPU=$(CPU_$(CPU_RAW))
-PLAT_RAW=$(shell echo "$(CPU_PLAT_RAW)" | cut -d "-" -f 2,3)
+PLAT_RAW:=$(shell echo "$(CPU_PLAT_RAW)" | cut -d "-" -f 2,3)
 PLAT_unknown-linux=linux
 PLAT_linux-gnu=linux
 PLAT_unknown-mingw32=windows
@@ -30,7 +30,7 @@ define cabal_query
 $(shell grep "^$(1):" smudge.cabal | cut -d ':' -f 1 --complement | sed -e 's/^\s*//' -e 's/\s*$$//')
 endef
 PACKAGE=smudge
-SMUDGE_BUILD_DIR_RAW=$(shell stack path --local-install-root)
+SMUDGE_BUILD_DIR_RAW:=$(shell stack path --local-install-root)
 SMUDGE_BUILD_DIR=$(subst \,/,$(SMUDGE_BUILD_DIR_RAW))
 SMUDGE_RELEASE_SUBDIR=smudge
 SMUDGE_RELEASE_STAGE_DIR=$(SMUDGE_BUILD_DIR)/$(SMUDGE_RELEASE_SUBDIR)
