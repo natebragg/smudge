@@ -8,7 +8,7 @@ module Language.Smudge.Backends.Backend (
     defaultConfig
 ) where
 
-import Language.Smudge.Grammar (StateMachine, State, SideEffect, Event)
+import Language.Smudge.Grammar (StateMachine, State, Event)
 import Language.Smudge.Semantics.Model (QualifiedName, TaggedName, Happening, EnterExitState)
 import Language.Smudge.Semantics.Solver (SymbolTable)
 import Language.Smudge.Semantics.Alias (Alias)

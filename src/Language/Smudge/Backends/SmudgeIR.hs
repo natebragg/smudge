@@ -26,7 +26,6 @@ import Language.Smudge.Grammar (
   State(..),
   Event(..),
   Function(..),
-  SideEffect(..),
   )
 import Language.Smudge.Semantics.Model (
   EnterExitState(..),
