@@ -474,7 +474,6 @@ lowerMachine cfg ssyms (StateMachine smName, g') = map (markUnused . boundArgs) 
 
                   psOf (Void :-> _) = []
                   psOf (p    :-> _) = [if isEventTy p (event h) then Value $ Var event_var else Null]
-                  apply_se (f, FuncTyped _) = undefined -- See ticket #15, harder than it seems at first.
                   apply_se (f, _) = FunCall (qualify f) (psOf (snd $ syms ! f))
                   es = case h of
                          (Happening _ ses [])                        -> [apply_se se | se <- ses] ++ (if do_exit then [call_exit] else []) ++ [assign_state, call_enter]

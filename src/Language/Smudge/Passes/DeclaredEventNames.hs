@@ -34,8 +34,7 @@ instance Monoid DeclaredEventNames where
     mappend = (<>)
 
 qesOfSes :: [SideEffect TaggedName] -> [QEvent TaggedName]
-qesOfSes ses = [qe | (_, FuncTyped qe@(_, Event _)) <- ses] ++
-               [qe | (_, FuncEvent qe@(_, Event _)) <- ses]
+qesOfSes ses = [qe | (_, FuncEvent qe@(_, Event _)) <- ses]
 
 instance Passable DeclaredEventNames where
     type Representation DeclaredEventNames = [(StateMachine TaggedName, [WholeState TaggedName])]

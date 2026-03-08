@@ -188,7 +188,6 @@ defSE gamma (x_d, f) =
 
 defFun :: SymTab -> Function TaggedName -> State Int SymTab
 defFun gamma FuncVoid = return gamma
-defFun gamma (FuncTyped (_, Event x_a')) = defName gamma x_a'
 defFun gamma (FuncEvent (_, Event x_a')) = defName gamma x_a'
 
 defName :: SymTab -> TaggedName -> State Int SymTab
@@ -223,8 +222,6 @@ inferSE gamma x_a (x_d, f) =
         tau' = gamma !> x_d
         inferFun :: Function TaggedName -> Constraint
         inferFun FuncVoid = External :@ x_d :/\ tau :-> Void :<: tau'
-        inferFun (FuncTyped (_, Event x_a')) = External :@ x_d :/\ tau :-> tau_a' :<: tau' :/\ typefor x_a' :<: tau_a'
-            where tau_a' = gamma !> x_a'
         inferFun (FuncEvent (_, Event x_a')) = tau_a' :-> Void :<: tau' :/\ typefor x_a' :<: tau_a'
             where tau_a' = gamma !> x_a'
     in  inferFun f

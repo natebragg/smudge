@@ -53,8 +53,8 @@ sake of brevity:
 \end{grammar}
 
 \section*{Type inference}
-The types of events and side effects in Smudge can be both explicit and
-implicit, as functions can be supplied both with and without type hints.
+The types of events and side effects in Smudge are implicit.
+%
 Accordingly, types within a single module are inferred using a deterministic
 constraint solver.  Constraints are satisfied through monomorphic or subtype
 polymorphic unification, depending on the flags supplied at invocation.

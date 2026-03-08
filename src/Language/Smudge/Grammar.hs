@@ -44,7 +44,7 @@ instance Functor Event where
 
 type QEvent a = (StateMachine a, Event a)
 
-data Function a = FuncVoid | FuncTyped (QEvent a) | FuncEvent (QEvent a)
+data Function a = FuncVoid | FuncEvent (QEvent a)
     deriving (Show, Eq, Ord)
 
 type SideEffect a = (a, Function a)

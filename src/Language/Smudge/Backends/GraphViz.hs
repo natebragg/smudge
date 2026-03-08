@@ -97,7 +97,6 @@ instance Labellable (Event TaggedName) where
 
 instance Labellable (SideEffect TaggedName) where
     toLabelValue (f, FuncVoid) = toLabelValue f
-    toLabelValue (f, FuncTyped (s, e)) = toLabelValue e
     toLabelValue (f, FuncEvent (s, e)) = mconcat [toLabelValue s, toLabelValue e]
 
 instance Labellable Happening where
