@@ -14,7 +14,7 @@ import Language.Smudge.Grammar (
   Event(..),
   QEvent,
   Function(..),
-  SideEffect,
+  SideEffect(..),
   WholeState,
   )
 import Language.Smudge.Semantics.Model (TaggedName, disqualifyTag)
@@ -34,7 +34,7 @@ instance Monoid DeclaredEventNames where
     mappend = (<>)
 
 qesOfSes :: [SideEffect TaggedName] -> [QEvent TaggedName]
-qesOfSes ses = [qe | (_, FuncEvent qe@(_, Event _)) <- ses]
+qesOfSes ses = [qe | (SideEffect (FuncEvent qe@(_, Event _))) <- ses]
 
 instance Passable DeclaredEventNames where
     type Representation DeclaredEventNames = [(StateMachine TaggedName, [WholeState TaggedName])]

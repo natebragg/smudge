@@ -9,7 +9,7 @@ module Language.Smudge.Passes.NoAnyEnterExit (
     NoAnyEnterExit
 ) where
 
-import Language.Smudge.Grammar (StateMachine(..), State(StateAny), SideEffect(..))
+import Language.Smudge.Grammar (StateMachine(..), State(StateAny), SideEffect(..), seName)
 import Language.Smudge.Semantics.Model (EnterExitState(..), Happening, TaggedName, disqualifyTag)
 import Language.Smudge.Parsers.Id (at)
 import Language.Smudge.Passes.Passes (Passable(..), Severity(..), Fault(..))
@@ -32,7 +32,7 @@ instance (Graph gr) => Passable (NoAnyEnterExit gr) where
     accumulate (_, n , EnterExitState en StateAny ex, o) a = mappend (NoAnyEnterExit $ en ++ ex) a
     accumulate                                         _ a = a
     test (StateMachine sm_name, g) (NoAnyEnterExit ses) =
-        case map fst ses of
+        case map seName ses of
         [] -> []
         xs -> [Fault ERROR (at sm_name) $ (disqualifyTag sm_name) ++ ": Any-state enter and exit functions are forbidden: " ++
                (intercalate ", " $ map disqualifyTag xs)]

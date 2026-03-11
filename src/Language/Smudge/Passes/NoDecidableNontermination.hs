@@ -8,7 +8,13 @@ module Language.Smudge.Passes.NoDecidableNontermination (
     NoDecidableNontermination
 ) where
 
-import Language.Smudge.Grammar (StateMachine(..), State(State), Event(Event), Function(FuncEvent))
+import Language.Smudge.Grammar (
+    StateMachine (..),
+    State (State),
+    Event (Event),
+    Function (FuncEvent),
+    SideEffect (..)
+    )
 import Language.Smudge.Semantics.Model (TaggedName, disqualifyTag)
 import Language.Smudge.Semantics.Operation (BasicBlock(..))
 import Language.Smudge.Parsers.Id (at)
@@ -43,7 +49,7 @@ instance Passable NoDecidableNontermination where
     type Representation NoDecidableNontermination = [((State TaggedName, Event TaggedName), BasicBlock)]
     accumulate ((_, _), BasicBlock {safe = ([],  _,   _)}) a = a
     accumulate ((s, e), BasicBlock {safe = (es, s', ses)}) a =
-        let evtOf (_, (FuncEvent (_, e))) = Just e
+        let evtOf (SideEffect (FuncEvent (_, e))) = Just e
             evtOf _ = Nothing
             syms@(sym:_) = map PatSym es
             -- zero or more repititions of all seen events, followed by one or more of the first event

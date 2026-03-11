@@ -165,7 +165,7 @@ basicBlocks g = foldMapWithKey (\event -> foldMapWithKey (\state _ -> case (stat
                 }
                 where (safeFinal, fullFinal) = until (Seq.null . queue . snd) (transients . step) $ transients (initial, initial)
                       initial = StepState {
-                            queue = mempty |> (undefined, FuncEvent (undefined, e)),
+                            queue = mempty |> SideEffect (FuncEvent (undefined, e)),
                             path = mempty, state = s, queue' = mempty, visited = mempty
                         }
 
@@ -182,7 +182,7 @@ basicBlocks g = foldMapWithKey (\event -> foldMapWithKey (\state _ -> case (stat
           step :: (StepState, StepState) -> (StepState, StepState)
           step stepstate@(_, prev@(StepState path s q q' visited)) = case viewl q of
             EmptyL -> stepstate
-            (_, FuncEvent (_, e)) :< rest -> case Map.lookup (s, e) visited of
+            (SideEffect (FuncEvent (_, e))) :< rest -> case Map.lookup (s, e) visited of
                 Just (s', q'') -> (prev, prev {path = path |> e, state = s', queue = rest, queue' = q' >< q''})
                 Nothing -> case Map.lookup e ahs >>= (! s) of
                     Just (s_h, e_h) -> clone $ StepState {path = path |> e, state = s', queue = rest >< q' >< q'', queue' = mempty, visited = visited'}

@@ -25,7 +25,7 @@ import Language.Smudge.Grammar (
   StateMachine,
   Event(..),
   Function(..),
-  SideEffect,
+  SideEffect(..),
   EventHandler,
   WholeState
   )
@@ -171,24 +171,25 @@ defState gamma (_, _, en, eh, ex) =
        gamma''' <-       defEvent gamma'' (EventExit,  ex, undefined)
        return gamma'''
 
+retag (TagEvent n) = TagFunction n
+
 defEvent :: SymTab -> EventHandler TaggedName -> State Int SymTab
 defEvent gamma (Event x_a, ds, _) =
     do gamma'   <- defName gamma x_a
        gamma''  <- defName gamma' $ retag x_a
        gamma''' <- foldM defSE gamma'' ds
        return gamma'''
-    where retag (TagEvent n) = (TagFunction n)
 defEvent gamma (_, ds, _) = foldM defSE gamma ds
 
 defSE :: SymTab -> SideEffect TaggedName -> State Int SymTab
-defSE gamma (x_d, f) =
-    do gamma' <- defName gamma x_d
-       gamma'' <- defFun gamma' f
-       return gamma''
+defSE gamma (SideEffect f) = defFun gamma f
 
 defFun :: SymTab -> Function TaggedName -> State Int SymTab
-defFun gamma FuncVoid = return gamma
-defFun gamma (FuncEvent (_, Event x_a')) = defName gamma x_a'
+defFun gamma (FuncVoid f) = defName gamma f
+defFun gamma (FuncEvent (_, Event x_a')) =
+    do gamma'  <- defName gamma x_a'
+       gamma'' <- defName gamma' (retag x_a')
+       return gamma''
 
 defName :: SymTab -> TaggedName -> State Int SymTab
 defName gamma x = if member x gamma
@@ -208,23 +209,25 @@ inferState gamma (_, _, en, eh, ex) = c_n :/\ c_h :/\ c_x
 
 inferEvent :: SymTab -> EventHandler TaggedName -> Constraint
 inferEvent gamma (Event x_a, ds, _) = Exported :@ x_a :/\ Exported :@ x_d :/\ typefor x_a :<: tau_a :/\ c
-    where retag (TagEvent n) = (TagFunction n)
-          tau_a = gamma !> x_a
+    where tau_a = gamma !> x_a
           x_d = retag x_a
-          d_a = (x_d, FuncEvent (undefined, Event x_a))
-          c = conjoin $ map (inferSE gamma (Just x_a)) (d_a:ds)
+          f_a = FuncEvent (undefined, Event x_a)
+          c = inferFun gamma (Just x_a) f_a :/\ conjoin (map (inferSE gamma (Just x_a)) ds)
 inferEvent gamma (        _, ds, _) = c
     where c = conjoin $ map (inferSE gamma Nothing ) ds
 
 inferSE :: SymTab -> Maybe TaggedName -> SideEffect TaggedName -> Constraint
-inferSE gamma x_a (x_d, f) =
+inferSE gamma x_a (SideEffect f) = inferFun gamma x_a f
+
+inferFun :: SymTab -> Maybe TaggedName -> Function TaggedName -> Constraint
+inferFun gamma x_a f =
     let tau = (gamma !? x_a)
-        tau' = gamma !> x_d
-        inferFun :: Function TaggedName -> Constraint
-        inferFun FuncVoid = External :@ x_d :/\ tau :-> Void :<: tau'
-        inferFun (FuncEvent (_, Event x_a')) = tau_a' :-> Void :<: tau' :/\ typefor x_a' :<: tau_a'
+        go (FuncVoid x_d) = External :@ x_d :/\ tau :-> Void :<: tau'
+            where tau' = gamma !> x_d
+        go (FuncEvent (_, Event x_a')) = tau_a' :-> Void :<: tau' :/\ typefor x_a' :<: tau_a'
             where tau_a' = gamma !> x_a'
-    in  inferFun f
+                  tau' = gamma !> retag x_a'
+    in  go f
 
 -- subtyping rules
 leastUpperBound :: Set Ty -> Set Ty

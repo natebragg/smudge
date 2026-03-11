@@ -12,6 +12,7 @@ module Language.Smudge.Passes.NoSentAnyEvents (
 import Language.Smudge.Grammar (
     StateMachine(StateMachine),
     WholeState,
+    seName
     )
 import Language.Smudge.Parsers.Id (at)
 import Language.Smudge.Semantics.Model (TaggedName, disqualifyTag)
@@ -25,7 +26,7 @@ newtype NoSentAnyEvents = NoSentAnyEvents [TaggedName]
 instance Passable NoSentAnyEvents where
     type Representation NoSentAnyEvents = [WholeState TaggedName]
     accumulate (_, _, en, hs, ex) = mappend $ NoSentAnyEvents $ filter (("_" ==) . disqualifyTag) fs
-        where fs = map fst $ en ++ concatMap (\(_, ses, _) -> ses) hs ++ ex
+        where fs = map seName $ en ++ concatMap (\(_, ses, _) -> ses) hs ++ ex
     test                         _ (NoSentAnyEvents []) = []
     test (StateMachine sm_name, _) (NoSentAnyEvents es) =
         [Fault ERROR (at ev) $ disqualifyTag sm_name ++ ": Any-event forbidden as side effect" | ev <- es]

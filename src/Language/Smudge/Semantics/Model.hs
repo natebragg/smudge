@@ -23,7 +23,6 @@ module Language.Smudge.Semantics.Model (
     states_for,
     TaggedName,
     Tagged(..),
-    qName,
     passInitialState,
     passConvertAnys,
     passFullyQualify,
@@ -200,10 +199,6 @@ instance Qualifiable (Event Identifier) where
 qQE :: StateMachine Identifier -> QEvent Identifier -> QualifiedName
 qQE sm (sm', ev) = qualify (pickSm sm sm', ev)
 
-qName :: StateMachine Identifier -> SideEffect Identifier -> QualifiedName
-qName _  (s, FuncVoid)    = qualify s
-qName sm (_, FuncEvent e) = qQE sm e
-
 passFullyQualify :: [(StateMachine Identifier, [WholeState Identifier])] -> [(StateMachine QualifiedName, [WholeState QualifiedName])]
 passFullyQualify sms = map qual sms
     where qual (sm, wss) = (qual_sm sm, map qual_ws wss)
@@ -212,9 +207,9 @@ passFullyQualify sms = map qual sms
                   qual_eh (ev, ses, s) = (qual_ev ev, map qual_fn ses, qual_st s)
                   qual_st = fmap (qualify . ((,) sm))
                   qual_ev = fmap (qualify . ((,) sm))
-                  qual_qe ev@(sm', _) = (qual_sm $ pickSm sm sm', Event $ qQE sm ev)
-                  qual_fn fn@(_, FuncVoid)     = (qName sm fn, FuncVoid)
-                  qual_fn fn@(_, FuncEvent qe) = (qName sm fn, FuncEvent $ qual_qe qe)
+                  qual_qe qe@(sm', _) = (qual_sm $ pickSm sm sm', Event $ qQE sm qe)
+                  qual_fn (SideEffect (FuncVoid   f)) = SideEffect (FuncVoid  $ qualify f)
+                  qual_fn (SideEffect (FuncEvent qe)) = SideEffect (FuncEvent $ qual_qe qe)
 
 passRename :: Alias QualifiedName -> (QualifiedName -> QualifiedName) -> [(StateMachine QualifiedName, [WholeState QualifiedName])] -> [(StateMachine QualifiedName, [WholeState QualifiedName])]
 passRename aliases nsprefix sms = map ren sms
@@ -223,8 +218,8 @@ passRename aliases nsprefix sms = map ren sms
           ren_ws (st, fs, en, es, ex) = (fmap rename' st, fs, map ren_fn en, map ren_eh es, map ren_fn ex)
           ren_eh (ev, ses, s) = (fmap rename' ev, map ren_fn ses, fmap rename' s)
           ren_qe (sm, ev) = (fmap rename' sm, fmap rename' ev)
-          ren_fn (n, FuncVoid)     = (rename' n, FuncVoid)
-          ren_fn (n, FuncEvent qe) = (rename' n, FuncEvent $ ren_qe qe)
+          ren_fn (SideEffect (FuncVoid   f)) = SideEffect (FuncVoid  $ rename' f)
+          ren_fn (SideEffect (FuncEvent qe)) = SideEffect (FuncEvent $ ren_qe qe)
 
 passTagCategories :: [(StateMachine QualifiedName, [WholeState QualifiedName])] -> [(StateMachine TaggedName, [WholeState TaggedName])]
 passTagCategories sms = map tag sms
@@ -232,8 +227,8 @@ passTagCategories sms = map tag sms
           tag_ws (st, fs, en, es, ex) = (fmap TagState st, fs, map tag_fn en, map tag_eh es, map tag_fn ex)
           tag_eh (ev, ses, s) = (fmap TagEvent ev, map tag_fn ses, fmap TagState s)
           tag_qe (sm', ev) = (fmap TagMachine sm', fmap TagEvent ev)
-          tag_fn (n, FuncVoid)     = (TagFunction n, FuncVoid)
-          tag_fn (n, FuncEvent qe) = (TagFunction n, FuncEvent $ tag_qe qe)
+          tag_fn (SideEffect (FuncVoid   f)) = SideEffect (FuncVoid  $ TagFunction f)
+          tag_fn (SideEffect (FuncEvent qe)) = SideEffect (FuncEvent $ tag_qe qe)
 
 smToGraph :: (StateMachine TaggedName, [WholeState TaggedName]) ->
                  Gr EnterExitState Happening

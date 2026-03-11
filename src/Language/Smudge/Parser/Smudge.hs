@@ -15,7 +15,7 @@ import Language.Smudge.Grammar (
     Event(Event, EventEnter),
     QEvent,
     Function(FuncVoid, FuncEvent),
-    SideEffect,
+    SideEffect(SideEffect),
     EventHandler,
     StateFlag(Initial),
     WholeState,
@@ -117,8 +117,8 @@ side_effect_list :: Stream s m Token => ParsecT s u m [SideEffect Identifier]
 side_effect_list = side_effect `sepEndBy` tok COMMA
 
 side_effect :: Stream s m Token => ParsecT s u m (SideEffect Identifier)
-side_effect = (,) <$> function_call <*> pure FuncVoid
-          <|> ((\(Event e) -> e) . snd &&& FuncEvent) <$> qualified_event
+side_effect = SideEffect <$> FuncVoid <$> function_call
+          <|> SideEffect <$> FuncEvent <$> qualified_event
           <?> "side effect"
 
 function_call :: Stream s m Token => ParsecT s u m Identifier
