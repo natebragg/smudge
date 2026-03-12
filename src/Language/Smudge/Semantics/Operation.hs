@@ -134,16 +134,16 @@ finalStates g = nodes g \\
 --
 -- If none of these is true, termination is undecidable using this algorithm.
 data BasicBlock = BasicBlock {
-        safe :: ([Event TaggedName], State TaggedName, [SideEffect TaggedName]),
-        full :: ([Event TaggedName], State TaggedName, [SideEffect TaggedName])
+        safe :: ([Event TaggedName], State TaggedName, [Function TaggedName]),
+        full :: ([Event TaggedName], State TaggedName, [Function TaggedName])
     }
 
 data StepState = StepState {
         path :: Seq (Event TaggedName),
         state :: State TaggedName,
-        queue :: Seq (SideEffect TaggedName),
-        queue' :: Seq (SideEffect TaggedName),
-        visited :: Map (State TaggedName, Event TaggedName) (State TaggedName, Seq (SideEffect TaggedName))
+        queue :: Seq (Function TaggedName),
+        queue' :: Seq (Function TaggedName),
+        visited :: Map (State TaggedName, Event TaggedName) (State TaggedName, Seq (Function TaggedName))
     }
 
 basicBlocks :: Graph gr => gr EnterExitState Happening -> [((State TaggedName, Event TaggedName), BasicBlock)]
@@ -165,7 +165,7 @@ basicBlocks g = foldMapWithKey (\event -> foldMapWithKey (\state _ -> case (stat
                 }
                 where (safeFinal, fullFinal) = until (Seq.null . queue . snd) (transients . step) $ transients (initial, initial)
                       initial = StepState {
-                            queue = mempty |> SideEffect (FuncEvent (undefined, e)),
+                            queue = mempty |> FuncEvent (undefined, e),
                             path = mempty, state = s, queue' = mempty, visited = mempty
                         }
 
@@ -175,21 +175,21 @@ basicBlocks g = foldMapWithKey (\event -> foldMapWithKey (\state _ -> case (stat
                 Just (s', q'') -> transients $ (prev, prev {state = s', queue' = q' >< q''})
                 Nothing -> transients $ clone $ prev {state = s', queue = q >< q' >< q'', queue' = mempty, visited = visited'}
                     where Just (EnterExitState {st=s', en}) = lab g n'
-                          q'' = fromList $ sideEffects ++ en
+                          q'' = fromList $ map seFn $ sideEffects ++ en
                           visited' = insert (s, EventEnter) (s', q'') visited
             otherwise -> stepstate
 
           step :: (StepState, StepState) -> (StepState, StepState)
           step stepstate@(_, prev@(StepState path s q q' visited)) = case viewl q of
             EmptyL -> stepstate
-            (SideEffect (FuncEvent (_, e))) :< rest -> case Map.lookup (s, e) visited of
+            (FuncEvent (_, e)) :< rest -> case Map.lookup (s, e) visited of
                 Just (s', q'') -> (prev, prev {path = path |> e, state = s', queue = rest, queue' = q' >< q''})
                 Nothing -> case Map.lookup e ahs >>= (! s) of
                     Just (s_h, e_h) -> clone $ StepState {path = path |> e, state = s', queue = rest >< q' >< q'', queue' = mempty, visited = visited'}
                         where [(n_h, EnterExitState {ex})]              = onlyState s_h
                               [(_, n', Happening {sideEffects, flags})] = filter ((e_h ==) . event . edgeLabel) $ out g n_h
                               Just (EnterExitState {st=s', en}) = lab g n'
-                              q'' = fromList $ sideEffects ++ (if NoTransition `elem` flags then [] else ex ++ en)
+                              q'' = fromList $ map seFn $ sideEffects ++ (if NoTransition `elem` flags then [] else ex ++ en)
                               visited' = insert (s, e) (s', q'') visited
                     Nothing -> clone $ prev {queue = mempty, queue' = q >< q'}
             otherwise -> clone $ prev {queue = mempty, queue' = q >< q'}

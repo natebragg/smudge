@@ -13,7 +13,6 @@ import Language.Smudge.Grammar (
     State (State),
     Event (Event),
     Function (FuncEvent),
-    SideEffect (..)
     )
 import Language.Smudge.Semantics.Model (TaggedName, disqualifyTag)
 import Language.Smudge.Semantics.Operation (BasicBlock(..))
@@ -48,13 +47,13 @@ match = go (const Just) Nothing
 instance Passable NoDecidableNontermination where
     type Representation NoDecidableNontermination = [((State TaggedName, Event TaggedName), BasicBlock)]
     accumulate ((_, _), BasicBlock {safe = ([],  _,   _)}) a = a
-    accumulate ((s, e), BasicBlock {safe = (es, s', ses)}) a =
-        let evtOf (SideEffect (FuncEvent (_, e))) = Just e
+    accumulate ((s, e), BasicBlock {safe = (es, s', fns)}) a =
+        let evtOf (FuncEvent (_, e)) = Just e
             evtOf _ = Nothing
             syms@(sym:_) = map PatSym es
             -- zero or more repititions of all seen events, followed by one or more of the first event
             pat = PatCat (PatStar $ foldr1 PatCat syms) $ PatCat sym $ PatStar sym
-            (m, rest) = first (match pat . mapMaybe evtOf) $ span (isJust . evtOf) ses
+            (m, rest) = first (match pat . mapMaybe evtOf) $ span (isJust . evtOf) fns
         in case (s == s', rest, m) of
         (True, [], Just (_, [])) -> NoDecidableNontermination [(s, e)] <> a
         otherwise -> a

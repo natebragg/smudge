@@ -13,7 +13,6 @@ import Language.Smudge.Grammar (
     State (State),
     Event (Event),
     Function (FuncEvent),
-    SideEffect (..)
     )
 import Language.Smudge.Semantics.Model (TaggedName, disqualifyTag)
 import Language.Smudge.Semantics.Operation (BasicBlock(..))
@@ -36,10 +35,10 @@ instance Passable NoUndecidableTermination where
     type Representation NoUndecidableTermination = [((State TaggedName, Event TaggedName), BasicBlock)]
     accumulate   ((_, _), BasicBlock {full = ([], _,   _)}) a = a
     accumulate   ((s, e), BasicBlock {full = ( _, _,  [])}) a = a
-    accumulate b@((s, e), BasicBlock {full = (es, _, ses)}) a =
-        let selfEv (SideEffect (FuncEvent (_, e'))) = e' `elem` (e:es)
+    accumulate b@((s, e), BasicBlock {full = (es, _, fns)}) a =
+        let selfEv (FuncEvent (_, e')) = e' `elem` (e:es)
             selfEv _ = False
-        in if not $ all selfEv ses then a
+        in if not $ all selfEv fns then a
            else NoUndecidableTermination [(accumulate b (mempty :: NoDecidableNontermination), (s, e))] <> a
     test bs@(StateMachine sm_name, _) (NoUndecidableTermination nts) =
         case map snd $ filter (null . test bs . fst) nts of

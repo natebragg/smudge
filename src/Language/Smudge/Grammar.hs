@@ -47,7 +47,7 @@ type QEvent a = (StateMachine a, Event a)
 data Function a = FuncVoid a | FuncEvent (QEvent a)
     deriving (Show, Eq, Ord)
 
-newtype SideEffect a = SideEffect (Function a)
+newtype SideEffect a = SideEffect { seFn :: (Function a) }
     deriving (Show, Eq, Ord)
 
 seName (SideEffect (FuncVoid f)) = f
