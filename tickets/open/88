@@ -1,0 +1,13 @@
+Title: Handle filenames with weird characters
+
+The name of files gets used directly in the compilation guard for C output.
+This means an input file named "args-ahoy.smudge" will produce the lines:
+
+<<*>>=
+#ifndef __args-ahoy_h__
+#define __args-ahoy_h__
+@
+
+etc., which doesn't compile.
+
+The best way to fix this is to treat them like RawIds, and cook them.
