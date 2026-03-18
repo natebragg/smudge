@@ -159,13 +159,6 @@ but must be a deterministic, bijective mapping of names to types.
 \]
 
 \[
-    \inference[SideEffectTyped]
-    {\Gamma(x_a)=\tau_{a}\\
-     x_{a'}\in\dom\Gamma&\Gamma(x_{a'})=\tau_{a'}}
-    {\proves{\tau_{a}\rightarrow\tau_{a'}\instantiates\Gamma(x_\delta),\Gamma,x_a}{\tuple{x_\delta,\textsc{typed}(x_{a'})}}}
-\]
-
-\[
     \inference[SideEffectEvent]
     {x_{a'}\in\dom\Gamma&\Gamma(x_{a'})=\tau_{a'}}
     {\proves{\tau_{a'}\rightarrow\void\instantiates\Gamma(x_\delta),\Gamma,x_a}{\tuple{x_\delta,\textsc{eventfunction}(x_{a'})}}}
