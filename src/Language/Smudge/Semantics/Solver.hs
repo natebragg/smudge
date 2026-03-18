@@ -24,7 +24,7 @@ module Language.Smudge.Semantics.Solver (
 import Language.Smudge.Grammar (
   StateMachine,
   Event(..),
-  Function(..),
+  Function(..), fnName,
   SideEffect(..),
   EventHandler,
   WholeState
@@ -96,15 +96,17 @@ elaborateMono (SymbolTable gamma) = SymbolTable . canonicalizeTabMono . defModul
 elaboratePoly :: SymbolTable -> [(StateMachine TaggedName, [(WholeState TaggedName)])] -> SymbolTable
 elaboratePoly (SymbolTable gamma) = SymbolTable . canonicalizeTabPoly . defModule gamma
 
+makeFun :: [Ty] -> Ty -> Ty
+makeFun [] rty = Void :-> rty
+makeFun [pty] rty = pty :-> rty
+makeFun (pty:ptys) rty = pty :-> makeFun ptys rty
+
 insertFunctions :: SymbolTable -> Binding -> [(QualifiedName, ([TaggedName], Name))] -> SymbolTable
 insertFunctions (SymbolTable gamma) b fs =
     SymbolTable $ canonicalizeTabPoly $ mapWithKey ((*** instantiate theta) . rebind btheta) gamma'
     where gamma' = evalState (foldM defName gamma $ map fst fs') 0  -- BUG: 0 is probably wrong
           fs' = map (TagFunction *** funTy) fs
           funTy = map Ty *** makeTy >>> uncurry makeFun
-          makeFun [] rty = Void :-> rty
-          makeFun [pty] rty = pty :-> rty
-          makeFun (pty:ptys) rty = pty :-> makeFun ptys rty
           makeTy "" = Void
           makeTy ty = Ty $ TagBuiltin $ qualify ty
           (btheta, theta) = solve $ conjoin [(b :@ n :/\ ty :<: gamma' !> n) | (n, ty) <- fs']
@@ -150,10 +152,6 @@ fresh = do n <- get
 (!>) :: SymTab -> TaggedName -> Ty
 gamma !> x = snd $ gamma Map.! x
 
-(!?) :: SymTab -> Maybe TaggedName -> Ty
-gamma !? (Just x) = gamma !> x
-_ !? _ = Void
-
 -- definition rules
 defModule :: SymTab -> [(StateMachine TaggedName, [(WholeState TaggedName)])] -> SymTab
 defModule gamma ms = mapWithKey ((*** instantiate theta) . rebind btheta) gammaN
@@ -172,6 +170,7 @@ defState gamma (_, _, en, eh, ex) =
        return gamma'''
 
 retag (TagEvent n) = TagFunction n
+retag x = x
 
 defEvent :: SymTab -> EventHandler TaggedName -> State Int SymTab
 defEvent gamma (Event x_a, ds, _) =
@@ -182,7 +181,9 @@ defEvent gamma (Event x_a, ds, _) =
 defEvent gamma (_, ds, _) = foldM defSE gamma ds
 
 defSE :: SymTab -> SideEffect TaggedName -> State Int SymTab
-defSE gamma (SideEffect f) = defFun gamma f
+defSE gamma (SideEffect f args) =
+    do gamma' <- defFun gamma f
+       foldM defFun gamma' args
 
 defFun :: SymTab -> Function TaggedName -> State Int SymTab
 defFun gamma (FuncVoid f) = defName gamma f
@@ -208,26 +209,31 @@ inferState gamma (_, _, en, eh, ex) = c_n :/\ c_h :/\ c_x
           c_x = inferEvent gamma (EventExit, ex, undefined)
 
 inferEvent :: SymTab -> EventHandler TaggedName -> Constraint
-inferEvent gamma (Event x_a, ds, _) = Exported :@ x_a :/\ Exported :@ x_d :/\ typefor x_a :<: tau_a :/\ c
+inferEvent gamma (Event x_a, ds, _) =
+    Exported :@ x_a :/\ Exported :@ x_d
+                    :/\ typefor x_a :<: tau_a
+                    :/\ tau_a :-> Void :<: tau_d
+                    :/\ conjoin (map (inferSE gamma [tau_a]) ds)
     where tau_a = gamma !> x_a
+          tau_d = gamma !> x_d
           x_d = retag x_a
-          f_a = FuncEvent (undefined, Event x_a)
-          c = inferFun gamma (Just x_a) f_a :/\ conjoin (map (inferSE gamma (Just x_a)) ds)
 inferEvent gamma (        _, ds, _) = c
-    where c = conjoin $ map (inferSE gamma Nothing ) ds
+    where c = conjoin $ map (inferSE gamma []) ds
 
-inferSE :: SymTab -> Maybe TaggedName -> SideEffect TaggedName -> Constraint
-inferSE gamma x_a (SideEffect f) = inferFun gamma x_a f
+inferSE :: SymTab -> [Ty] -> SideEffect TaggedName -> Constraint
+inferSE gamma tau_e (SideEffect f args) =
+    inferFun gamma tau_e tau_args f :/\ conjoin (map (inferFun gamma tau_e []) args)
+    where tau_args = map ((gamma !>) . retag . fnName) args
 
-inferFun :: SymTab -> Maybe TaggedName -> Function TaggedName -> Constraint
-inferFun gamma x_a f =
-    let tau = (gamma !? x_a)
-        go (FuncVoid x_d) = External :@ x_d :/\ tau :-> Void :<: tau'
-            where tau' = gamma !> x_d
-        go (FuncEvent (_, Event x_a')) = tau_a' :-> Void :<: tau' :/\ typefor x_a' :<: tau_a'
-            where tau_a' = gamma !> x_a'
-                  tau' = gamma !> retag x_a'
-    in  go f
+inferFun :: SymTab -> [Ty] -> [Ty] -> Function TaggedName -> Constraint
+inferFun gamma tau_e taus (FuncVoid x_d) =
+    External :@ x_d :/\ makeFun (tau_e ++ taus) Void :<: tau_d
+    where tau_d = gamma !> x_d
+inferFun gamma _ _ (FuncEvent (_, Event x_a)) =
+    tau_a :-> Void :<: tau_d :/\ typefor x_a :<: tau_a
+    where tau_a = gamma !> x_a
+          tau_d = gamma !> x_d
+          x_d = retag x_a
 
 -- subtyping rules
 leastUpperBound :: Set Ty -> Set Ty

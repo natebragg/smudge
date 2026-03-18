@@ -1,0 +1,13 @@
+// Copyright 2026 Nate Bragg.
+// This software is released under the 3-Clause BSD License.
+// The license can be viewed at https://github.com/smudgelang/smudge/blob/master/LICENSE
+
+ArgsAhoy
+{
+  * ArgsAhoy (@oneArg @takesVoid)
+    [
+        multiple-args -(@twoArgsWithDefault @f set-up-conflict, @threeArgsWithDefault set-up-conflict trigger-conflict @e)-,
+        set-up-conflict -(@setUpConflict @conflict)-,
+        trigger-conflict -(@triggerConflict @conflict)-,
+    ]
+}

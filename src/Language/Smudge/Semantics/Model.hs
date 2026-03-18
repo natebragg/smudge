@@ -203,32 +203,35 @@ passFullyQualify :: [(StateMachine Identifier, [WholeState Identifier])] -> [(St
 passFullyQualify sms = map qual sms
     where qual (sm, wss) = (qual_sm sm, map qual_ws wss)
             where qual_sm = fmap qualify
-                  qual_ws (st, fs, en, es, ex) = (qual_st st, fs, map qual_fn en, map qual_eh es, map qual_fn ex)
-                  qual_eh (ev, ses, s) = (qual_ev ev, map qual_fn ses, qual_st s)
+                  qual_ws (st, fs, en, es, ex) = (qual_st st, fs, map qual_se en, map qual_eh es, map qual_se ex)
+                  qual_eh (ev, ses, s) = (qual_ev ev, map qual_se ses, qual_st s)
                   qual_st = fmap (qualify . ((,) sm))
                   qual_ev = fmap (qualify . ((,) sm))
                   qual_qe qe@(sm', _) = (qual_sm $ pickSm sm sm', Event $ qQE sm qe)
-                  qual_fn (SideEffect (FuncVoid   f)) = SideEffect (FuncVoid  $ qualify f)
-                  qual_fn (SideEffect (FuncEvent qe)) = SideEffect (FuncEvent $ qual_qe qe)
+                  qual_se (SideEffect f args) = SideEffect (qual_fn f) (map qual_fn args)
+                  qual_fn (FuncVoid   f) = FuncVoid  $ qualify f
+                  qual_fn (FuncEvent qe) = FuncEvent $ qual_qe qe
 
 passRename :: Alias QualifiedName -> (QualifiedName -> QualifiedName) -> [(StateMachine QualifiedName, [WholeState QualifiedName])] -> [(StateMachine QualifiedName, [WholeState QualifiedName])]
 passRename aliases nsprefix sms = map ren sms
     where rename' = rename aliases . nsprefix
           ren (sm, wss) = (fmap rename' sm, map ren_ws wss)
-          ren_ws (st, fs, en, es, ex) = (fmap rename' st, fs, map ren_fn en, map ren_eh es, map ren_fn ex)
-          ren_eh (ev, ses, s) = (fmap rename' ev, map ren_fn ses, fmap rename' s)
+          ren_ws (st, fs, en, es, ex) = (fmap rename' st, fs, map ren_se en, map ren_eh es, map ren_se ex)
+          ren_eh (ev, ses, s) = (fmap rename' ev, map ren_se ses, fmap rename' s)
           ren_qe (sm, ev) = (fmap rename' sm, fmap rename' ev)
-          ren_fn (SideEffect (FuncVoid   f)) = SideEffect (FuncVoid  $ rename' f)
-          ren_fn (SideEffect (FuncEvent qe)) = SideEffect (FuncEvent $ ren_qe qe)
+          ren_se (SideEffect f args) = SideEffect (ren_fn f) (map ren_fn args)
+          ren_fn (FuncVoid   f) = FuncVoid  $ rename' f
+          ren_fn (FuncEvent qe) = FuncEvent $ ren_qe qe
 
 passTagCategories :: [(StateMachine QualifiedName, [WholeState QualifiedName])] -> [(StateMachine TaggedName, [WholeState TaggedName])]
 passTagCategories sms = map tag sms
     where tag (sm, wss) = (fmap TagMachine sm, map tag_ws wss)
-          tag_ws (st, fs, en, es, ex) = (fmap TagState st, fs, map tag_fn en, map tag_eh es, map tag_fn ex)
-          tag_eh (ev, ses, s) = (fmap TagEvent ev, map tag_fn ses, fmap TagState s)
+          tag_ws (st, fs, en, es, ex) = (fmap TagState st, fs, map tag_se en, map tag_eh es, map tag_se ex)
+          tag_eh (ev, ses, s) = (fmap TagEvent ev, map tag_se ses, fmap TagState s)
           tag_qe (sm', ev) = (fmap TagMachine sm', fmap TagEvent ev)
-          tag_fn (SideEffect (FuncVoid   f)) = SideEffect (FuncVoid  $ TagFunction f)
-          tag_fn (SideEffect (FuncEvent qe)) = SideEffect (FuncEvent $ tag_qe qe)
+          tag_se (SideEffect f args) = SideEffect (tag_fn f) (map tag_fn args)
+          tag_fn (FuncVoid   f) = FuncVoid  $ TagFunction f
+          tag_fn (FuncEvent qe) = FuncEvent $ tag_qe qe
 
 smToGraph :: (StateMachine TaggedName, [WholeState TaggedName]) ->
                  Gr EnterExitState Happening

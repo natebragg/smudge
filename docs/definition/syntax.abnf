@@ -32,6 +32,7 @@ become = (become-empty / become-begin [side-effect-list] become-end)
 
 ;; Side effects
 side-effect-list = side-effect *(comma side-effect) [comma]
-side-effect = function-call / qualified-event
+function = function-call / qualified-event
+side-effect = function *function
 function-call = foreign-identifier
 qualified-event = [state-machine-name dot] event-name

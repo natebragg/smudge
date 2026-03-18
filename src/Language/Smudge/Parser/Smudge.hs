@@ -117,9 +117,11 @@ side_effect_list :: Stream s m Token => ParsecT s u m [SideEffect Identifier]
 side_effect_list = side_effect `sepEndBy` tok COMMA
 
 side_effect :: Stream s m Token => ParsecT s u m (SideEffect Identifier)
-side_effect = SideEffect <$> FuncVoid <$> function_call
-          <|> SideEffect <$> FuncEvent <$> qualified_event
+side_effect = SideEffect <$> function <*> many function
           <?> "side effect"
+
+function :: Stream s m Token => ParsecT s u m (Function Identifier)
+function = FuncVoid <$> function_call <|> (FuncEvent <$> qualified_event)
 
 function_call :: Stream s m Token => ParsecT s u m Identifier
 function_call = identify <$> tok FID

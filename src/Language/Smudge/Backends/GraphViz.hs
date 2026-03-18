@@ -100,7 +100,7 @@ instance Labellable (Function TaggedName) where
     toLabelValue (FuncEvent (s, e)) = mconcat [toLabelValue s, toLabelValue e]
 
 instance Labellable (SideEffect TaggedName) where
-    toLabelValue (SideEffect f) = toLabelValue f
+    toLabelValue (SideEffect f _) = toLabelValue f
 
 instance Labellable Happening where
     toLabelValue (Happening e ses _) = mconcat $ intersperse labelCrlf $ toLabelValue e : map toLabelValue ses

@@ -1,6 +1,7 @@
 \documentclass{article}
 \usepackage{amsmath}
 \usepackage{amsthm}
+\usepackage{graphics}
 \usepackage{semantic}
 \usepackage{syntax}
 \usepackage{verbatimbox}
@@ -12,8 +13,7 @@
 
 \newcommand{\void}{\texttt{void}}
 
-\newcommand{\proves}[2]{#1 \vdash #2}
-\newcommand{\hastype}[3]{\proves{#1}{#2 : #3}}
+\newcommand{\hastype}[3]{\#1 \vdash #2 : #3}
 \newcommand{\tuple}[1]{\left\langle #1 \right\rangle}
 \newcommand{\yield}[2]{\tuple{#1} \rightarrow \tuple{#2}}
 
@@ -29,12 +29,15 @@ definitions, in turn composed of one or more comma-separated transient- or
 non-transient states, possibly intermixed with locally-scoped state machine
 definitions.  Non-transient states are made up of zero or more enter and exit
 side effects and one or more comma-separated event handlers, possibly
-intermixed with locally-scoped state machine definitions.  Event handlers are
-either ``arrow'' (transitioning), ``dash'' (non-transitioning), or ``become''
-(submachine-transitioning) declarations, whose side effects can either be
-foreign functions or Smudge events.  All identifiers can contain any character
-(when quoted) except foreign functions, which are conservatively limited to
-C-style identifiers.
+intermixed with locally-scoped state machine definitions.
+%
+Event handlers are either ``arrow'' (transitioning), ``dash''
+(non-transitioning), or ``become'' (submachine-transitioning) declarations,
+whose side effects can either be foreign functions or Smudge events, with or
+without arguments delimited by spaces.
+%
+All identifiers can contain any character (when quoted) except foreign
+functions, which are conservatively limited to C-style identifiers.
 
 The rules are as follows:
 
@@ -96,7 +99,7 @@ bijective mappings from names to names.
 \[
     \inference[ModuleDef]
     {\yield{m_1,\Gamma}{\Gamma_1}&\ldots&\yield{m_n,\Gamma_{n-1}}{\Gamma_n}\\
-     \proves{C,\Gamma_n}{m_1,\ldots,m_n}\\
+     C,\Gamma_n \vdash m_1,\ldots,m_n\\
      \theta C\issatisfied&\theta\Gamma=\Gamma}
     {\yield{\textsc{module}(\tuple{m_1,\ldots,m_n}),\Gamma}{\theta\Gamma_n}}
 \]
@@ -116,8 +119,15 @@ bijective mappings from names to names.
 \[
     \inference[EventDef]
     {\yield{x_a,\Gamma}{\Gamma'}&\yield{\texttt{funfor}(x_a),\Gamma'}{\Gamma''}\\
-     \yield{x_{\check{\delta}_1},\Gamma''}{\Gamma_1}&\ldots&\yield{x_{\check{\delta}_n},\Gamma_{n-1}}{\Gamma_n}}
+     \yield{\check{\delta}_1,\Gamma''}{\Gamma_1}&\ldots&\yield{\check{\delta}_n,\Gamma_{n-1}}{\Gamma_n}}
     {\yield{\textsc{event}(x_a,\tuple{\check{\delta}_1,\ldots,\check{\delta}_n}),\Gamma}{\Gamma_n}}
+\]
+
+\[
+    \inference[EffectDef]
+    {\yield{x_{\check{\delta}},\Gamma}{\Gamma'}&
+     \yield{x_1,\Gamma'}{\Gamma_1}&\ldots&\yield{x_n,\Gamma_{n-1}}{\Gamma_n}}
+    {\yield{\textsc{effect}(x_{\check{\delta}},\tuple{x_1,\ldots,x_n}),\Gamma}{\Gamma_n}}
 \]
 
 \[
@@ -138,33 +148,42 @@ satisfied during unification.  The function \texttt{typefor} is not specified,
 but must be a deterministic, bijective mapping of names to types.
 \[
     \inference[StateMachine]
-    {\proves{C,\Gamma}{q_1,\ldots,q_n}}
-    {\proves{C,\Gamma}{\textsc{statemachine}(m,\tuple{q_1,\ldots,q_n})}}
+    {C,\Gamma \vdash q_1,\ldots,q_n}
+    {C,\Gamma \vdash \textsc{statemachine}(m,\tuple{q_1,\ldots,q_n})}
 \]
 
 \[
     \inference[State]
-    {\proves{C,\Gamma}{a_1,\ldots,a_n}}
-    {\proves{C,\Gamma}{\textsc{state}(q,\tuple{a_1,\ldots,a_n})}}
+    {C,\Gamma \vdash a_1,\ldots,a_n}
+    {C,\Gamma \vdash \textsc{state}(q,\tuple{a_1,\ldots,a_n})}
 \]
 
 \[
     \inference[Event]
-    {\proves{C,\Gamma,x_a}{\delta_a,\check{\delta}_1,\ldots,\check{\delta}_n}&\tau=\texttt{typefor}(x_a)}
-    {\proves{\tau\instantiates\Gamma(x_a)\land C,\Gamma}
-             {\textsc{event}(x_a,\tuple{\check{\delta}_1,\ldots,\check{\delta}_n})}}
+    {C,\Gamma
+        \mathrel{\scalebox{2}[1]{$\vdash$}}^{\mkern-20mu\scriptscriptstyle\rule[-1ex]{0pt}{0pt}x_a}
+        \check{\delta}_1,\ldots,\check{\delta}_n&\tau_a=\texttt{typefor}(x_a)&x_\delta=\texttt{funfor}(x_a)}
+    {\tau_a\instantiates\Gamma(x_a)\land \tau_a\rightarrow\void\instantiates\Gamma(x_\delta) \land C,\Gamma \vdash
+        \textsc{event}(x_a,\tuple{\check{\delta}_1,\ldots,\check{\delta}_n})}
 \]
 
 \[
-    \inference[SideEffectFunction]
-    {\Gamma(x_a)=\tau_{a}}
-    {\proves{\tau_{a}\rightarrow\void\instantiates\Gamma(x_\delta),\Gamma,x_a}{\textsc{function}(x_\delta)}}
+    \inference[EffectFunction]
+    {C,\Gamma
+     \mathrel{\scalebox{2}[1]{$\vdash$}}^{\mkern-20mu\scriptscriptstyle\rule[-1ex]{0pt}{0pt}x_a}
+     \textsc{effect}(x_1,\tuple{}),\ldots,\textsc{effect}(x_n,\tuple{})\\
+     \Gamma(x_a)=\tau_{a}&\Gamma(x_1)=\tau_1&\ldots&\Gamma(x_n)=\tau_n \\
+     \tau_{\check{\delta}}\equiv\tau_a\rightarrow \tau_1\rightarrow\ldots\rightarrow\tau_n\rightarrow\void}
+    {\tau_{\check{\delta}}\instantiates\Gamma(x_{\check{\delta}})\land C,\Gamma
+        \mathrel{\scalebox{2}[1]{$\vdash$}}^{\mkern-20mu\scriptscriptstyle\rule[-1ex]{0pt}{0pt}x_a}
+        \textsc{effect}(\textsc{function}(x_{\check{\delta}}),\tuple{x_1,\ldots,x_n})}
 \]
 
 \[
-    \inference[SideEffectEvent]
-    {x_{a'}\in\dom\Gamma & \Gamma(x_{a'})=\tau_{a'} & x_\delta=\texttt{funfor}(x_{a'})}
-    {\proves{\tau_{a'}\rightarrow\void\instantiates\Gamma(x_\delta),\Gamma,x_a}{\textsc{eventfunction}(x_{a'})}}
+    \inference[EffectEvent]
+    {\tau_a=\texttt{typefor}(x_a) & x_\delta=\texttt{funfor}(x_a)}
+    {\tau_a\instantiates\Gamma(x_a)\land \tau_a\rightarrow\void\instantiates\Gamma(x_\delta),\Gamma \vdash
+        \textsc{effect}(\textsc{sendevent}(x_a),\tuple{})}
 \]
 
 \subsection*{Monomorphic unification rules}

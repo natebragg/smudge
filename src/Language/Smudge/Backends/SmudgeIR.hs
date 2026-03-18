@@ -26,7 +26,8 @@ import Language.Smudge.Grammar (
   State(..),
   Event(..),
   Function(..),
-  seName
+  fnName,
+  SideEffect(..)
   )
 import Language.Smudge.Semantics.Model (
   EnterExitState(..),
@@ -53,7 +54,7 @@ import Control.Arrow ((***), second)
 import Data.Graph.Inductive.PatriciaTree (Gr)
 import Data.Graph.Inductive.Graph (labNodes, lab, out, suc, insEdges, nodes, delNodes)
 import Data.List ((\\), nub)
-import Data.Map (Map, empty, insert, (!), toList)
+import Data.Map (Map, empty, insert, (!), toList, keys)
 import Data.Set (member)
 
 seqtup :: Applicative f => (f a, f b) -> f (a, b)
@@ -79,7 +80,7 @@ instance Traversable Def where
 data Ty x = Void
         | Ty (Tagged x)
         | Ty x :-> Ty x
-    deriving (Eq, Ord)
+    deriving (Eq, Ord, Show)
 
 infixr 7 :->
 
@@ -341,7 +342,8 @@ lowerMachine cfg ssyms (StateMachine smName, g') = map (markUnused . boundArgs) 
                        | (n, EnterExitState {st = State _, ex = ex@(_:_)}) <- labNodes $ delNodes (finalStates g' ++ [n | n <- nodes g', (_, _, Happening EventExit _ _) <- out g' n]) g'] ++
                       [(n, n, Happening EventEnter en [NoTransition])
                        | (n, EnterExitState {en, st = State _}) <- labNodes $ delNodes [n | n <- nodes g', (_, _, Happening EventEnter _ _) <- out g' n] g']) g'
-        eventNames = map qualify $ ["e"] ++ map (('e':) . show) [2..]
+        notShadowing x = not $ x `elem` map qualify (keys syms)
+        eventNames = filter notShadowing $ map qualify $ ["e"] ++ map (('e':) . show) [2..]
         char = TagBuiltin $ qualify "char"
         stateName_f = qualify (smName, "State_name")
         eventName_f = qualify (smName, "Event_name")
@@ -473,9 +475,18 @@ lowerMachine cfg ssyms (StateMachine smName, g') = map (markUnused . boundArgs) 
                   isEventTy a (Event e) = a == snd (syms ! e)
                   isEventTy _ _ = False
 
-                  psOf (Void :-> _) = []
-                  psOf (p    :-> _) = [if isEventTy p (event h) then Value $ Var event_var else Null]
-                  apply_se se = let f = retag $ seName se in FunCall (qualify f) (psOf (snd $ syms ! f))
+                  psOf (Void :-> Void) _ = []
+                  psOf ty@(Void :-> (_ :-> _)) _ = error $ "Tried to apply a function with multiple arguments including Void: " ++ show ty ++ ".  This is a bug in smudge.\n"
+                  psOf ty args = go ty args
+                      where go Void [] = []
+                            go (_ :-> f) (arg:args) = Value (Var arg) : go f args
+                            go _ _  = error $ "Tried to apply a function whose arguments (" ++ show args ++ ") did not match its type (" ++ show ty ++ ") " ++ show h ++ ".  This is a bug in smudge.\n"
+                  apply_se (SideEffect fn args) = go fn $ snd $ syms ! f
+                      where go (FuncEvent (_, e)) (p :-> Void) | isEventTy p e   = FunCall (qualify f) [Null]
+                            go (FuncVoid _) ty@(p :-> _) | isEventTy p (event h) = FunCall (qualify f) $ psOf ty (event_var : qargs)
+                            go (FuncVoid _) ty                                   = FunCall (qualify f) $ psOf ty qargs
+                            qargs = map (qualify . fnName) args
+                            f = retag $ fnName fn
                   retag (TagEvent n) = TagFunction n
                   retag x = x
                   es = case h of

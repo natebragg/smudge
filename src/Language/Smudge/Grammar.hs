@@ -8,7 +8,7 @@ module Language.Smudge.Grammar (
     State(..),
     Event(..),
     QEvent,
-    Function(..),
+    Function(..), fnName,
     SideEffect(..), seName,
     EventHandler,
     StateFlag(..),
@@ -47,11 +47,13 @@ type QEvent a = (StateMachine a, Event a)
 data Function a = FuncVoid a | FuncEvent (QEvent a)
     deriving (Show, Eq, Ord)
 
-newtype SideEffect a = SideEffect { seFn :: (Function a) }
+fnName (FuncVoid f) = f
+fnName (FuncEvent (_, Event e)) = e
+
+data SideEffect a = SideEffect { seFn :: (Function a), seArgs :: [Function a] }
     deriving (Show, Eq, Ord)
 
-seName (SideEffect (FuncVoid f)) = f
-seName (SideEffect (FuncEvent (_, Event e))) = e
+seName = fnName . seFn
 
 type EventHandler a = (Event a, [SideEffect a], State a)
 
