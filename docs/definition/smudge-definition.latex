@@ -88,8 +88,11 @@ inference, then by unification, and finally by instantiation.
 \subsection*{Definition rules}
 During definition, each module is inspected, and names are collected and
 assigned type variables in the type environment $\Gamma$.
-
+%
 All names are fully-qualified.
+%
+The function \texttt{funfor} is not specified, but must be a deterministic,
+bijective mappings from names to names.
 \[
     \inference[ModuleDef]
     {\yield{m_1,\Gamma}{\Gamma_1}&\ldots&\yield{m_n,\Gamma_{n-1}}{\Gamma_n}\\
@@ -112,7 +115,7 @@ All names are fully-qualified.
 
 \[
     \inference[EventDef]
-    {\yield{x_a,\Gamma}{\Gamma'}&\yield{x_{\delta_a},\Gamma'}{\Gamma''}\\
+    {\yield{x_a,\Gamma}{\Gamma'}&\yield{\texttt{funfor}(x_a),\Gamma'}{\Gamma''}\\
      \yield{x_{\check{\delta}_1},\Gamma''}{\Gamma_1}&\ldots&\yield{x_{\check{\delta}_n},\Gamma_{n-1}}{\Gamma_n}}
     {\yield{\textsc{event}(x_a,\tuple{\check{\delta}_1,\ldots,\check{\delta}_n}),\Gamma}{\Gamma_n}}
 \]
@@ -155,13 +158,13 @@ but must be a deterministic, bijective mapping of names to types.
 \[
     \inference[SideEffectFunction]
     {\Gamma(x_a)=\tau_{a}}
-    {\proves{\tau_{a}\rightarrow\void\instantiates\Gamma(x_\delta),\Gamma,x_a}{\tuple{x_\delta,\textsc{function}}}}
+    {\proves{\tau_{a}\rightarrow\void\instantiates\Gamma(x_\delta),\Gamma,x_a}{\textsc{function}(x_\delta)}}
 \]
 
 \[
     \inference[SideEffectEvent]
-    {x_{a'}\in\dom\Gamma&\Gamma(x_{a'})=\tau_{a'}}
-    {\proves{\tau_{a'}\rightarrow\void\instantiates\Gamma(x_\delta),\Gamma,x_a}{\tuple{x_\delta,\textsc{eventfunction}(x_{a'})}}}
+    {x_{a'}\in\dom\Gamma & \Gamma(x_{a'})=\tau_{a'} & x_\delta=\texttt{funfor}(x_{a'})}
+    {\proves{\tau_{a'}\rightarrow\void\instantiates\Gamma(x_\delta),\Gamma,x_a}{\textsc{eventfunction}(x_{a'})}}
 \]
 
 \subsection*{Monomorphic unification rules}
