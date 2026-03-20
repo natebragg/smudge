@@ -315,22 +315,35 @@ Event struct typedefs emitted by the compiler have names generated
 according to the name mangling translation.
 
 Foreign function declarations emitted by the compiler have the exact
-name stated in the source, accept zero or one parameters, and return
-nothing.  If a parameter is accepted, it is a const pointer to an
-event struct.
+name stated in the source, accept zero or more parameters, and return
+nothing.
+%
+All function parameters have function pointer type, except for an
+optional initial const pointer to an event struct.
 
 Event function declarations emitted by the compiler have names generated
 according to the name mangling translation and accept one parameter,
 a const pointer to an event struct.
 
 A foreign function invoked only in the handler for a single type of
-named event will always accept a single parameter of the corresponding
-type.  One invoked only as an enter or exit side effect will accept
-zero parameters.  One invoked from multiple contexts---either the
+named event will always accept an initial parameter of the corresponding
+type.
+%
+One invoked only as an enter or exit side effect will not receive this
+initial parameter.
+%
+One invoked from multiple contexts---either the
 handlers for multiple named events or from both named event handlers
-and enter or exit side effects---accepts zero parameters under
+and enter or exit side effects---loses this parameter under
 polymorphic unification, but causes a type error under monomorphic
 unification.
+
+All other parameters are as passed in the source file.
+%
+The types of these parameters are inferred from their use sites, where
+functions take either zero or one parameters, according to the
+preceding rules, and events have the type of the corresponding
+generated event-sending function.
 
 \section*{Name mangling}
 
