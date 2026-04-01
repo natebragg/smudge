@@ -10,6 +10,7 @@ $(DIST_PATH):
 
 $(DIST_PATH)/smudge-definition.pdf: smudge-definition.latex $(DIST_PATH)/syntax.latex $(DIST_PATH)/lexer.latex
 	pdflatex -output-directory $(DIST_PATH) $<
+	pdflatex -output-directory $(DIST_PATH) $<
 
 $(DIST_PATH)/%.latex: %.abnf $(DIST_PATH)
 	sh abnftosyntax.sh $< > $@

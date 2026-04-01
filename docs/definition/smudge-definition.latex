@@ -1,5 +1,6 @@
 \documentclass{article}
 \usepackage{amsmath}
+\usepackage{amssymb}
 \usepackage{amsthm}
 \usepackage{graphics}
 \usepackage{semantic}
@@ -10,6 +11,7 @@
 \newcommand{\instantiates}{\operatorname{<:}}
 \newcommand{\issatisfied}{\operatorname{is\, satisfied}}
 \newcommand{\isfresh}{\operatorname{is\, fresh}}
+\newcommand{\arefresh}{\operatorname{are\, fresh}}
 
 \newcommand{\void}{\texttt{void}}
 
@@ -56,11 +58,30 @@ sake of brevity:
 \end{grammar}
 
 \section*{Type inference}
-The types of events and side effects in Smudge are implicit.
+
+Smudge uses type inference both to determine the correctness of Smudge programs
+and to facilitate code generation.
+%
+The type system Smudge uses is nominal, which is to say that machines with
+different names are of different types, even if they handle the exact same set
+of events, and differently named events are of different types even if they
+contain the same data.
+%
+It is also effectful, which is to say that side effects do not return values,
+but instead have associated effects (also called capabilities) when run.
+%
+Currently the only capability available is to handle the active event.
+
+The types of terms in Smudge are implicit---there is no type ascription syntax.
+%
+There is also no way to explicitly define types---they are defined implicitly by
+the syntax of machines and event handlers.
 %
 Accordingly, types within a single module are inferred using a deterministic
-constraint solver.  Constraints are satisfied through monomorphic or subtype
-polymorphic unification, depending on the flags supplied at invocation.
+constraint solver.
+%
+Constraints are satisfied through monomorphic unification, save for effects and
+capabilities, whose unification depends on the flags supplied at invocation.
 
 To construct these rules, both the notation of natural deduction for type
 inference and the notation for automata are useful here, with a slight
@@ -68,12 +89,15 @@ modification: rather than a machine being represented by a top-level structure
 composed of states, symbols, and uniform total transitions, the symbols
 (referred to as events) are nested behind the states, and nested within events
 are transitions composed of a sequence of side-effectful computation
-statements, whose types can be non-uniform.  For clarity, the following
-conventions are used:
+statements, whose types can be non-uniform.
+%
+For clarity, the following conventions are used:
 \begin{itemize}
-    \item $\Gamma$ refers to the environment of types
-    \item $\tau$ refers to either a type or a type variable
-    \item $\alpha$ refers to a type variable
+    \item $\Gamma$ refers to a type environment, an ordered mapping from names to types
+    \item $\mathcal{S}$ refers to a signature environment, an ordered mapping from type names to their definition
+    \item $\tau$ refers to a type
+    \item $\alpha$ refers to a type variable (or ``tyvar'')
+    \item $\phi$ refers to a capability or effect
     \item $C$ refers to the set of constraints
     \item $\theta$ refers to the substitutions
     \item $x$ refers to an identifier
@@ -83,108 +107,262 @@ conventions are used:
     \item $a$ refers to a single input event
     \item $\delta$ refers to a total transition function for a state and event
     \item $\check{\delta}$ refers to a named side-effectful partial transition
+    \item $e$ refers to an expression, which appear as subterms of a partial transition
 \end{itemize}
 
-The definition phase initiates elaboration, which is followed by constraint
-inference, then by unification, and finally by instantiation.
+Environments, types, and constraints are constructed according to the grammar
+shown in Figure~\ref{fig:types}.
 
-\subsection*{Definition rules}
-During definition, each module is inspected, and names are collected and
-assigned type variables in the type environment $\Gamma$.
+\begin{figure}
+  \renewcommand{\syntleft}{\normalfont\itshape}
+  \renewcommand{\syntright}{}
+  \setlength{\grammarparsep}{2pt}
+  \setlength{\grammarindent}{2em}
+  \begin{grammar}
+    <$\Gamma$,$\mathcal{S}$> ::= $\varnothing$ | \{ <x> $\mapsto \tau$, \ldots, <x> $\mapsto \tau$ \} | $\Gamma$ $\Gamma$
+
+    <$\tau$> ::= $\alpha$ | "machine" <x> | $\phi$ | $\tau \rightarrow \tau$ | $\tau \times \tau$ | $\Pi\ \Gamma$ | $\Sigma\ \Gamma$
+
+    <$\phi$> ::= $\varnothing$ | $\phi$, "eventful" <x>
+
+    <C> ::= $\top$ | $\tau$ \textless: $\tau$ | $\tau \sim \tau$ | $\tau \sim$ "range" $\tau$ | <C> $\land$ <C>
+  \end{grammar}
+  \caption{\label{fig:types} Grammar of types, environments, and constraints}
+\end{figure}
+
+Environments are either the empty set $\varnothing$, designated as some
+sequences of bindings of a name $x_i$ to type $\tau_i$, or constructed by
+concatenating two environments $\Gamma_1 \Gamma_2$.
+
+A type can either be a tyvar $\alpha$, some named \syntax{"machine" $x$}, an
+effect/capability $\phi$, a function $\tau_p \rightarrow \tau_r$, a tuple (or
+product) $\tau_1 \times \tau_2$, record $\Pi\ \Gamma$, or variant (also called
+a sum or tagged union) $\Sigma\ \Gamma$.
 %
-All names are fully-qualified.
+Additionally, there is a restriction that the final type in a chain of arrows
+(the return) must be $\phi$; currently functions do not chain (i.e., there are
+no closures or partial application) and are expected to have one parameter that
+is a tuple of the arguments, but that is not enforced in the type grammar.
 %
-The function \texttt{funfor} is not specified, but must be a deterministic,
-bijective mappings from names to names.
-\[
-    \inference[ModuleDef]
-    {\yield{m_1,\Gamma}{\Gamma_1}&\ldots&\yield{m_n,\Gamma_{n-1}}{\Gamma_n}\\
-     C,\Gamma_n \vdash m_1,\ldots,m_n\\
-     \theta C\issatisfied&\theta\Gamma=\Gamma}
-    {\yield{\textsc{module}(\tuple{m_1,\ldots,m_n}),\Gamma}{\theta\Gamma_n}}
-\]
+A consequence of this is that side effects in Smudge cannot return values, so to
+do work they have to send events.
+%
+Record types are equivalent to tuples with named entries, and so the order of
+fields is fixed.
+%
+Variants on the other hand do not strictly police the order of their fields;
+although Smudge does not include the unnamed sum type, this property is needed
+for inference.
 
-\[
-    \inference[StateMachineDef]
-    {\yield{q_1,\Gamma}{\Gamma_1}&\ldots&\yield{q_n,\Gamma_{n-1}}{\Gamma_n}}
-    {\yield{\textsc{statemachine}(m,\tuple{q_1,\ldots,q_n}),\Gamma}{\Gamma_n}}
-\]
+Effects or capabilities are either $\varnothing$ (no effect), or some set of
+effects that includes \syntax{"eventful" $x$}, meaning that the active event of
+type $x$ is available to the side effect in question.
+%
+When compiled, this will appear in C as a normal parameter to the function,
+which returns \texttt{void}.
 
-\[
-    \inference[StateDef]
-    {\yield{a_1,\Gamma}{\Gamma_1}&\ldots&\yield{a_n,\Gamma_{n-1}}{\Gamma_n}}
-    {\yield{\textsc{state}(q,\tuple{a_1,\ldots,a_n}),\Gamma}{\Gamma_n}}
-\]
-
-\[
-    \inference[EventDef]
-    {\yield{x_a,\Gamma}{\Gamma'}&\yield{\texttt{funfor}(x_a),\Gamma'}{\Gamma''}\\
-     \yield{\check{\delta}_1,\Gamma''}{\Gamma_1}&\ldots&\yield{\check{\delta}_n,\Gamma_{n-1}}{\Gamma_n}}
-    {\yield{\textsc{event}(x_a,\tuple{\check{\delta}_1,\ldots,\check{\delta}_n}),\Gamma}{\Gamma_n}}
-\]
-
-\[
-    \inference[EffectDef]
-    {\yield{x_{\check{\delta}},\Gamma}{\Gamma'}&
-     \yield{x_1,\Gamma'}{\Gamma_1}&\ldots&\yield{x_n,\Gamma_{n-1}}{\Gamma_n}}
-    {\yield{\textsc{effect}(x_{\check{\delta}},\tuple{x_1,\ldots,x_n}),\Gamma}{\Gamma_n}}
-\]
-
-\[
-    \inference[NameDef]
-    {x\not\in\dom\Gamma&\alpha\isfresh}
-    {\yield{\textsc{name}(x),\Gamma}{\Gamma\left\{x\mapsto\alpha\right\}}}
-\]
-
-\[
-    \inference[NameDefAlready]
-    {x\in\dom\Gamma}
-    {\yield{\textsc{name}(x),\Gamma}{\Gamma}}
-\]
+Constraints come in three flavors:
+trivially true ($\top$),
+subtype ($\tau_1 <: \tau_2$), and
+equality ($\tau_1 \sim \tau_2$).
+%
+Multiple constraints are conjoined logically ($C_1 \land C_2$).
+%
+There is also a necessary operator \syntax{"range" $\tau$}, which represents the
+label-erased tuple type for some record; that is, for some record type $\tau$
+defined as $\Pi \{ x \mapsto \tau_1, y \mapsto \tau_2 \}$, the range is defined
+to be $\tau_1 \times \tau_2$.
 
 \subsection*{Constraint rules}
-Constraints are accumulated over the elaboration of a module, and then
-satisfied during unification.  The function \texttt{typefor} is not specified,
-but must be a deterministic, bijective mapping of names to types.
-\[
+
+\begin{figure}
+  \[\begin{array}{c}
+    \inference[Module]
+    {% Get the names of all of the machines
+     m_1 = \textsc{machine}(x_1,\_) & \ldots & m_n = \textsc{machine}(x_n,\_) \\
+     % Create the signature environment by mapping machine names to fresh type variables
+     \mathcal{S}\equiv \{ x_i \mapsto \alpha_i \mid \alpha_i \isfresh, 1\leq i\leq n\} \\
+     % Create the initial type environments by adding a singleton for each machine ...
+     \Gamma_m\equiv \{ x_i \mapsto \texttt{machine } x_i \mid 1\leq i\leq n\} \\
+     % ... and scraping the entire program for foreign function names
+     \Gamma_\delta\equiv \{ x \mapsto \alpha \mid \alpha \isfresh, \textsc{function}(x) \in m_1,\ldots,m_n \} \\
+     % Recurse, typing each machine
+     C_1,\mathcal{S},\Gamma \Gamma_\delta \Gamma_m \vdash m_1 : \tau_1 & \ldots
+     & C_n,\mathcal{S},\Gamma \Gamma_\delta \Gamma_m \vdash m_n : \tau_n \\
+     % Combine all constraint clauses and equate the returned types
+     C\equiv \bigwedge_{i=1}^n C_i \land \alpha_i \sim \tau_i &
+     % Solve the constraint system
+     \theta C\issatisfied}
+    {\top,\varnothing,\Gamma \vdash \textsc{module}(\tuple{m_1,\ldots,m_n}) : \Pi\ \theta\mathcal{S}}
+    \\\\
     \inference[StateMachine]
-    {C,\Gamma \vdash q_1,\ldots,q_n}
-    {C,\Gamma \vdash \textsc{statemachine}(m,\tuple{q_1,\ldots,q_n})}
-\]
-
-\[
+    {% Recurse, typing each state
+     C_1,\mathcal{S},\Gamma \vdash q_1 : \tau_1 & \ldots & C_n,\mathcal{S},\Gamma \vdash q_n : \tau_n \\
+     % Combine all constraint clauses and build the supertype of the returned state types
+     C\equiv \bigwedge_{i=1}^n C_i \land \tau_i <: \alpha & \alpha \isfresh}
+    {C,\mathcal{S},\Gamma \vdash \textsc{machine}(\_,\tuple{q_1,\ldots,q_n}) : \alpha}
+    \\\\
     \inference[State]
-    {C,\Gamma \vdash a_1,\ldots,a_n}
-    {C,\Gamma \vdash \textsc{state}(q,\tuple{a_1,\ldots,a_n})}
-\]
-
-\[
+    {% Get the names of all of the events
+     a_1 = \textsc{event}(x_1,\_,\_) & \ldots & a_n = \textsc{event}(x_n,\_,\_) \\
+     % Recurse, typing each event handler
+     C_1,\mathcal{S},\Gamma \vdash a_1 : \tau_1 & \ldots & C_n,\mathcal{S},\Gamma \vdash a_n : \tau_n \\
+     % Combine all constraint clauses
+     C\equiv \bigwedge_{i=1}^n C_i &
+     % Create the state's type environment by mapping event names to their sender
+     \Gamma_q\equiv \{ x_i \mapsto \tau_i \mid 1\leq i\leq n\} }
+    {C,\mathcal{S},\Gamma \vdash \textsc{state}(\_,\tuple{a_1,\ldots,a_n}) : \Sigma\ \Gamma_q}
+    \\\\
     \inference[Event]
-    {C,\Gamma
-        \mathrel{\scalebox{2}[1]{$\vdash$}}^{\mkern-20mu\scriptscriptstyle\rule[-1ex]{0pt}{0pt}x_a}
-        \check{\delta}_1,\ldots,\check{\delta}_n&\tau_a=\texttt{typefor}(x_a)&x_\delta=\texttt{funfor}(x_a)}
-    {\tau_a\instantiates\Gamma(x_a)\land \tau_a\rightarrow\void\instantiates\Gamma(x_\delta) \land C,\Gamma \vdash
-        \textsc{event}(x_a,\tuple{\check{\delta}_1,\ldots,\check{\delta}_n})}
-\]
+    {% Create the event's type environment by mapping field names to fresh tyvars
+     \Gamma_a\equiv \{ x_i \mapsto \alpha_i \mid \alpha_i \isfresh, 1\leq i\leq m\} \\
+     % Recurse, typing each side effect
+     C_1,\mathcal{S},\Gamma \vdash \check{\delta}_1 : \phi_1 & \ldots & C_n,\mathcal{S},\Gamma \vdash \check{\delta}_n : \phi_n \\
+     % The side effects all return an effect, which could include eventful x
+     C\equiv \bigwedge_{i=1}^n C_i \land \texttt{eventful } x <: \phi_i}
+    {C,\mathcal{S},\Gamma \vdash \textsc{event}(x,\tuple{x_1,\ldots,x_m},\tuple{\check{\delta}_1,\ldots,\check{\delta}_n}) : \Pi\ \Gamma_a \rightarrow \varnothing}
+    \\\\
+    \inference[Effect]
+    {% Recurse to type the effect function, and make a tyvar for the effect
+     C_{\check{\delta}},\Gamma \vdash e_{\check{\delta}} : \tau_{\check{\delta}} & \alpha_\phi \isfresh \\
+     % Recurse to type the effect arguments
+     C_1,\mathcal{S},\Gamma \vdash e_1 : \tau_1 & \ldots & C_n,\mathcal{S},\Gamma \vdash e_n : \tau_n \\
+     % Constrain the function to be a function of arity n of the corresponding type and effect, then combine all constraint clauses
+     C\equiv \tau_{\check{\delta}} \sim \tau_1 \times \ldots \times \tau_n \rightarrow \alpha_\phi \land C_{\check{\delta}} \land \bigwedge_{i=1}^n C_i}
+    {C,\mathcal{S},\Gamma \vdash \textsc{effect}(e_{\check{\delta}},\tuple{e_1,\ldots,e_n}) : \alpha_\phi}
+    \\\\
+    \inference[SendEvent]
+    {% Look up the machine's signature, and create three fresh tyvars
+     \tau = \mathcal{S}(x_m) & \alpha_a,\alpha_\pi,\alpha_\phi \arefresh \\
+     % Constrain the signature to include a field of this name with a function type, constrain the argument to be a record, and break out the range of that record
+     C\equiv \Sigma\ \{ x_a \mapsto \alpha_a \rightarrow \varnothing \} <: \tau \land \Pi\ \varnothing <: \alpha_a \land \alpha_\pi \sim \texttt{range } \alpha_a}
+    {C,\mathcal{S},\Gamma \vdash \textsc{sendevent}(x_m, x_a) : \alpha_\pi \rightarrow \alpha_\phi}
+    \\\\
+    \inference[Function]
+    {% Look up the name of the variable
+     \tau = \Gamma(x)}
+    {C,\mathcal{S},\Gamma \vdash \textsc{function}(x) : \tau}
+    \\\\
+    \inference[Label]
+    {% Look up the name of the variable
+     \tau = \Gamma(x)}
+    {C,\mathcal{S},\Gamma \vdash \textsc{label}(x) : \tau}
+  \end{array}\]
+  \caption{\label{fig:inference} Type inference}
+\end{figure}
 
-\[
-    \inference[EffectFunction]
-    {C,\Gamma
-     \mathrel{\scalebox{2}[1]{$\vdash$}}^{\mkern-20mu\scriptscriptstyle\rule[-1ex]{0pt}{0pt}x_a}
-     \textsc{effect}(x_1,\tuple{}),\ldots,\textsc{effect}(x_n,\tuple{})\\
-     \Gamma(x_a)=\tau_{a}&\Gamma(x_1)=\tau_1&\ldots&\Gamma(x_n)=\tau_n \\
-     \tau_{\check{\delta}}\equiv\tau_a\rightarrow \tau_1\rightarrow\ldots\rightarrow\tau_n\rightarrow\void}
-    {\tau_{\check{\delta}}\instantiates\Gamma(x_{\check{\delta}})\land C,\Gamma
-        \mathrel{\scalebox{2}[1]{$\vdash$}}^{\mkern-20mu\scriptscriptstyle\rule[-1ex]{0pt}{0pt}x_a}
-        \textsc{effect}(\textsc{function}(x_{\check{\delta}}),\tuple{x_1,\ldots,x_n})}
-\]
+Elaboration consists of three phases: constraint inference, unification, and
+instantiation.
+%
+We start with a discussion of inference.
 
-\[
-    \inference[EffectEvent]
-    {\tau_a=\texttt{typefor}(x_a) & x_\delta=\texttt{funfor}(x_a)}
-    {\tau_a\instantiates\Gamma(x_a)\land \tau_a\rightarrow\void\instantiates\Gamma(x_\delta),\Gamma \vdash
-        \textsc{effect}(\textsc{sendevent}(x_a),\tuple{})}
-\]
+Figure~\ref{fig:inference} shows the rules of Smudge's type system.
+%
+The judgment form $C,\mathcal{S},\Gamma \vdash e : \tau$ means given
+constraints $C$, machine signatures $\mathcal{S}$, and type environment
+$\Gamma$, term $e$ is well formed and has type $\tau$.
+
+The algorithm begins at the module level.
+%
+The Module rule starts with the built-in type environment $\Gamma$, but an empty
+signature environment, as Smudge does not currently have any built-in machines.
+%
+It pulls the names $x_i$ out of each machine definition, and creates the
+module's signature environment $\mathcal{S}$ by binding each name to a fresh
+tyvar.
+%
+It then creates the type environment $\Gamma_m$, which includes the singleton
+for each machine, and scrapes the entire module for foreign function names,
+which it puts in the type environment $\Gamma_\delta$.
+%
+Next, inference recurses, passing in the signature environment and combined type
+environments to find the type $\tau_i$ and constraints $C_i$ for each machine
+$m_i$.
+%
+These constraints are conjoined, with the additional constraints that the tyvars
+reserved for our machines must match the types inferred for them.
+%
+These constraints are then satisfied by the unification algorithm, which yields
+the substitution $\theta$.
+%
+The type of the overall module is found by applying this substitution to the
+signature environment, then compiling it into a record $\Pi\ \theta\mathcal{S}$
+
+The StateMachine rule simply recurses, typing each state $q_i$ individually.
+%
+It creates a fresh tyvar $\alpha$ to use as the type of the machine, and
+constrains it to be the supertype over all states, then combines these with all
+the other constraint clauses.
+
+The State rule begins by pulling the names $x_i$ out of each event handler $a_i$.
+%
+It recurses, typing each handler, and combines all the constraints.
+%
+It then creates the state's type environment $\Gamma_q$ by mapping event name
+$x_i$ to the type $\tau_i$ inferred for the corresponding handler.
+
+To infer the type for event handlers, the Event rule creates the event's type
+environment $\Gamma_a$ by mapping field names $x_1$ through $x_m$ to fresh
+tyvars.
+%
+It next recurses to the side effects $\check{\delta}$.
+%
+Because the return type for all side effects is an effect/capability, we use
+$\phi$ to make this arrangement explicit.
+%
+We conjoin all constraints, adding additional subtype constraints which
+augment each $\phi_i$ with the capability \syntax{"eventful" $x$}.
+%
+The handler is then given the odd-looking type
+$\Pi\ \Gamma_a \rightarrow \varnothing$.
+%
+This is a function that takes a record over all of the handler's fields and has
+no effects.
+%
+There are two noteworthy things here---one, that this does not introduce a named
+record type into the signature environment as might be expected, relying instead
+on the definition of the machine; and two, that the type takes a record instead
+of a product, which is out of step with the concrete syntax.
+%
+We address that in the SendEvent rule.
+
+The Effect rule recurses to type both the function expression
+$e_{\check{\delta}}$ and the argument expressions $e_i$ (we call these
+expressions for lack of a better term---in truth, they currently just range over
+names of events, foreign functions, and handler fields).
+%
+With the help of the effect tyvar $\alpha_\phi$, it then constrains the function
+type $\tau_{\check{\delta}}$ to be of arity $n$ of the corresponding argument
+types, then combines this with all constraint clauses.
+%
+As each side effect represents a complete application, the returned type is the
+effect tyvar $\alpha_\phi$.
+
+When the expression in question is a fully qualified event, the SendEvent rule
+looks up the signature $\tau$ of the machine $x_m$ in $\mathcal{S}$, and creates
+three fresh tyvars: $\alpha_a$ for the event record, $\alpha_\pi$ for the
+label-erased tuple type, and $\alpha_\phi$ for the effect.
+%
+To type correctly, the rule performs a few tricks.
+%
+First, it constrains the machine's signature to include a binding for the event
+$x_a$ of function type.
+%
+Second, it constrains the domain of that function to have a record type, but
+does not specify any field names.
+%
+Third, it adds a constraint that erases the labels for that record type, taking
+only the range as the product type $\alpha_\pi$.
+%
+During code generation, the external API provides only the version that accepts
+a complete record; the tuple version is only available internally.
+%
+With the help of these tricks, the returned type is now compatible with the
+constraint from the Effect rule.
+
+Finally, the Function and Label rules are straightforward.
+%
+Both look up the type for the name in the type environment and return it.
 
 \subsection*{Monomorphic unification rules}
 These rules dictate type resolution in the case where the types must match.
