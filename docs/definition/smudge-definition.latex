@@ -364,6 +364,144 @@ Finally, the Function and Label rules are straightforward.
 %
 Both look up the type for the name in the type environment and return it.
 
+\subsection*{Unification}
+
+\begin{figure}
+  \[\begin{array}{c}
+    \inference[Conjoin]
+    {\theta_1 C_1\issatisfied&\theta_2 (\theta_1 C_2)\issatisfied}
+    {(\theta_2 \circ \theta_1)C_1\land C_2\issatisfied}
+    \\\\
+    \inference[Trivial]
+    {}
+    {\top\issatisfied}
+    \\\\
+    \inference[EqualReflexive]
+    {}
+    {\tau\sim \tau\issatisfied}
+    \\\\
+    \inference[EqualTyvar]
+    {\alpha\not\in \textrm{ftv}(\tau) &
+     \theta\equiv \{\alpha \mapsto \tau \}}
+    {\theta(\alpha\sim \tau)\issatisfied}
+    \\\\
+    \inference[EqualCapability]
+    {\theta (\phi_1, \phi_2 \sim \phi_3, \phi_4)\issatisfied}
+    {\theta(\phi_1, \texttt{eventful }x, \phi_2 \sim \phi_3, \texttt{eventful }x, \phi_4)\issatisfied}
+    \\\\
+    \inference[EqualArrow]
+    {\theta (\tau_1 \sim \tau_3 \land \tau_2 \sim \tau_4)\issatisfied}
+    {\theta(\tau_1 \rightarrow \tau_2 \sim \tau_3 \rightarrow \tau_4)\issatisfied}
+    \\\\
+    \inference[EqualProduct]
+    {\theta (\tau_1 \sim \tau_3 \land \tau_2 \sim \tau_4)\issatisfied}
+    {\theta(\tau_1 \times \tau_2 \sim \tau_3 \times \tau_4)\issatisfied}
+    \\\\
+    \inference[EqualRecord]
+    {\Gamma_x\equiv\{ x_1 \mapsto \tau_{x_1}, \ldots, x_m \mapsto \tau_{x_m} \} \\
+     \Gamma_y\equiv\{ y_1 \mapsto \tau_{y_1}, \ldots, y_n \mapsto \tau_{y_n} \} \\
+     m = n & x_1 = y_1 \ldots x_m = y_n \\
+     \theta (\tau_{x_1} \sim \tau_{y_1} \land \ldots \land \tau_{x_m} \sim \tau_{y_n})\issatisfied}
+    {\theta(\Pi\ \Gamma_x\sim \Pi\ \Gamma_y)\issatisfied}
+    \\\\
+    \inference[EqualVariant]
+    {\Gamma_x\equiv\{ x_1 \mapsto \tau_{x_1}, \ldots, x_m \mapsto \tau_{x_m} \} \\
+     \Gamma_y\equiv\{ y_1 \mapsto \tau_{y_1}, \ldots, y_n \mapsto \tau_{y_n} \} \\
+     m = n &
+     \theta (\bigwedge_{i=1}^m \tau_{x_i} \sim \tau_{y_j} \mid x_i = y_j)\issatisfied}
+    {\theta(\Sigma\ \Gamma_x\sim \Sigma\ \Gamma_y)\issatisfied}
+    \\\\
+    \inference[EqualRange]
+    {\Gamma_y\equiv\{ y_1 \mapsto \tau_{y_1}, \ldots, y_n \mapsto \tau_{y_n} \} \\
+     m = n &
+     \theta (\tau_{x_1} \sim \tau_{y_1} \land \ldots \land \tau_{x_m} \sim \tau_{y_n})\issatisfied}
+    {\theta(\tau_{x_1} \times \ldots \times \tau_{x_m}\sim \texttt{range } \Pi\ \Gamma_y)\issatisfied}
+  \end{array}\]
+  \caption{\label{fig:unification} Constraint unification for non-subtype constraints}
+\end{figure}
+
+After accruing constraints within a module, unification satisfies them, yielding
+an assignment of tyvars to types, commonly known as a substitution.
+%
+Figure~\ref{fig:unification} gives the rules used to solve conjunctions of
+trivially true and equality constraints, and the subtyping rules are listed in
+Figure~\ref{fig:unificationsubtype}.
+%
+Let us first discuss the non-subtype rules.
+
+To solve multiple constraints, the Conjoin rule first finds a substitution
+$\theta_1$ that satisfies the first constraint $C_1$, then applies that
+substitution to $C_2$ before solving it to get $\theta_2$.
+%
+The resulting substitution that solves the conjunction is the composition of the
+two, $\theta_2\circ\theta_1$.
+%
+We must solve these in order rather than independently to ensure a valid
+solution; solving them independently may result in an error.
+
+The Trivial rule covers trivially true constraints, which are always satisfied.
+
+One of the simplest rules is EqualReflexive, which states that a type must be
+equal to itself.
+
+The core of unification is the EqualTyvar rule, which is the source of
+substitutions.
+%
+It creates a binding of the tyvar $\alpha$ to the arbitrary type $\tau$, with
+the critical caveat that $\alpha$ does not appear in the free tyvars of $\tau$.
+
+As capabilities form a set, the order does not matter.
+%
+Accordingly, the EqualCapability rule sidesteps the exact order of capabilities;
+provided that both sets contain the \syntax{"eventful" $x$} capability and the
+remaining sets match, the constraint is satisfied.
+
+For typing functions, we use the EqualArrow rule.
+%
+This checks that the parameters for both functions, $\tau_1$ and $\tau_3$,
+match, and the same for the results $\tau_2$ and $\tau_4$.
+
+The EqualProduct rule for tuples looks similar and behaves the same.
+
+The EqualRecord rule sooks intimidating, but is actually straightforward.
+%
+It starts by splitting out both records to expose the field names and their
+types.
+%
+It then checks that both records have the same number of fields, and that the
+field names of $\Gamma_x$ are the same as those of $\Gamma_y$---two records with
+the same field names in a different order are \emph{not} the same type.
+%
+To derive the substitution $\theta$, it runs unification on the conjunction of
+the equality of the fields' types.
+
+The EqualVariant is similar, but with the twist that the field name order does
+not matter---two variants with the same field names in different order compare
+the same, and are thus the same type (so long as no fields are missing).
+%
+We achieve this by iterating the fields of $\Gamma_x$, finding the same field
+from $\Gamma_y$, and unifying their types.
+
+Finally, the EqualRange rule is a twist on EqualRecord---this time, we need only
+break apart $\Gamma_y$.
+%
+As we are comparing it to a product type, we can ignore the field names, and
+just unify the conjunction over the types.
+%
+It is important to note here that this constraint is harder to solve, as it only
+accepts a product and a record; as such, these constraints have to be deferred
+until the end of unification to guarantee that they can be solved.
+
+\begin{figure}
+  \[\begin{array}{c}
+    \inference[SubtypeReflexive]
+    {}
+    {\tau <: \tau\issatisfied}
+    \\\\
+  \end{array}\]
+  \caption{\label{fig:unificationsubtype} Constraint unification for subtype constraints}
+\end{figure}
+
 \subsection*{Monomorphic unification rules}
 These rules dictate type resolution in the case where the types must match.
 This behavior can be selected by supplying a flag at invocation.  It resolves
@@ -372,12 +510,6 @@ conflicting constraints by rejecting the module as ill-formed.
 \[
     \inference[SubtypeEqual]
     {\tau_1=\tau_2}{\tau_1\instantiates\tau_2}
-\]
-
-\[
-    \inference[Conjoin]
-    {C_1\issatisfied&C_2\issatisfied}
-    {C_1\land C_2\issatisfied}
 \]
 
 \subsection*{Subtype polymorphic unification rules}
