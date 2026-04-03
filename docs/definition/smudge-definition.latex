@@ -223,12 +223,16 @@ to be $\tau_1 \times \tau_2$.
     {C,\mathcal{S},\Gamma \vdash \textsc{event}(x,\tuple{x_1,\ldots,x_m},\tuple{\check{\delta}_1,\ldots,\check{\delta}_n}) : \Pi\ \Gamma_a \rightarrow \varnothing}
     \\\\
     \inference[Effect]
-    {% Recurse to type the effect function, and make a tyvar for the effect
-     C_{\check{\delta}},\Gamma \vdash e_{\check{\delta}} : \tau_{\check{\delta}} & \alpha_\phi \isfresh \\
+    {% Recurse to type the effect function
+     C_{\check{\delta}},\Gamma \vdash e_{\check{\delta}} : \tau_{\check{\delta}} &
      % Recurse to type the effect arguments
-     C_1,\mathcal{S},\Gamma \vdash e_1 : \tau_1 & \ldots & C_n,\mathcal{S},\Gamma \vdash e_n : \tau_n \\
+     C_1,\mathcal{S},\Gamma \vdash e_1 : \tau_1 \quad \ldots \quad C_n,\mathcal{S},\Gamma \vdash e_n : \tau_n \\
+     % make a tyvar for the effect and for each effect arguments
+     \alpha_\phi,\alpha_1,\ldots,\alpha_n,\alpha_{\phi_1},\ldots,\alpha_{\phi_n} \arefresh \\
+     % Expose the returns of all effect arguments, and ensure that the capabilities are large enough to handle the effect's capabilities
+     C_\phi\equiv \tau_1 \sim \alpha_1 \rightarrow \alpha_{\phi_1} \land \alpha_\phi <: \alpha_{\phi_1} \land \ldots \land \tau_n \sim \alpha_n \rightarrow \alpha_{\phi_n} \land \alpha_\phi <: \alpha_{\phi_n} \\
      % Constrain the function to be a function of arity n of the corresponding type and effect, then combine all constraint clauses
-     C\equiv \tau_{\check{\delta}} \sim \tau_1 \times \ldots \times \tau_n \rightarrow \alpha_\phi \land C_{\check{\delta}} \land \bigwedge_{i=1}^n C_i}
+     C\equiv \tau_{\check{\delta}} \sim \tau_1 \times \ldots \times \tau_n \rightarrow \alpha_\phi \land C_\phi \land C_{\check{\delta}} \land \bigwedge_{i=1}^n C_i}
     {C,\mathcal{S},\Gamma \vdash \textsc{effect}(e_{\check{\delta}},\tuple{e_1,\ldots,e_n}) : \alpha_\phi}
     \\\\
     \inference[SendEvent]
@@ -328,15 +332,30 @@ We address that in the SendEvent rule.
 
 The Effect rule recurses to type both the function expression
 $e_{\check{\delta}}$ and the argument expressions $e_i$ (we call these
-expressions for lack of a better term---in truth, they currently just range over
-names of events, foreign functions, and handler fields).
+''expressions'' for lack of a better term---in truth, they currently just range
+over names of events, foreign functions, and handler field labels).
+%
+We now require a number of fresh tyvars: one for the function expression,
+$\alpha_\phi$, and two more for each argument expressions, $\alpha_i$ and
+$\alpha_{\phi_i}$.
+%
+The rule uses these to construct the constraint conjunction $C_\phi$, consisting
+of constraining $\tau_i$ to the function $\alpha_i \rightarrow \alpha_{\phi_i}$,
+and then constraining $\alpha_\phi$ to be a subtype of $\alpha_{\phi_i}$, for
+each $i$ in the arguments.
 %
 With the help of the effect tyvar $\alpha_\phi$, it then constrains the function
 type $\tau_{\check{\delta}}$ to be of arity $n$ of the corresponding argument
-types, then combines this with all constraint clauses.
+types, then combines this with all other constraint clauses.
 %
 As each side effect represents a complete application, the returned type is the
 effect tyvar $\alpha_\phi$.
+%
+The motivation for this rule's design is to guarantee that all capabilities
+required by $e_{\check{\delta}}$ are also required by $e_1$ through $e_n$.
+%
+Practically speaking, this means that in the generated code, the active event
+will both be passed into the side effect and requested by its arguments.
 
 When the expression in question is a fully qualified event, the SendEvent rule
 looks up the signature $\tau$ of the machine $x_m$ in $\mathcal{S}$, and creates
