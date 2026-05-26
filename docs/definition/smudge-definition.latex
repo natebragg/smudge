@@ -152,11 +152,11 @@ is a tuple of the arguments, but that is not enforced in the type grammar.
 A consequence of this is that side effects in Smudge cannot return values, so to
 do work they have to send events.
 %
-Record types are equivalent to tuples with named entries, and so the order of
-fields is fixed.
+Record types are equivalent to tuples with named entries, and so the count and
+order of fields is fixed.
 %
-Variants on the other hand do not strictly police the order of their fields;
-although Smudge does not include the unnamed sum type, this property is needed
+Variants on the other hand do not strictly police the order of their tags;
+although Smudge does not include untagged union types, this property is needed
 for inference.
 
 Capabilities are either
@@ -300,9 +300,11 @@ signature environment, then compiling it into a record $\Pi\ \theta\mathcal{S}$
 
 The StateMachine rule simply recurses, typing each state $q_i$ individually.
 %
-It creates a fresh tyvar $\alpha$ to use as the type of the machine, and
-constrains it to be the supertype over all states, then combines these with all
-the other constraint clauses.
+It then combines all constraint clauses $C_i$ with new constraints on the
+machine's overall type, represented by the fresh tyvar $\alpha$.
+%
+These new constraints guarantee that $\alpha$ is the supertype of the inferred type
+of each state $\tau_i$.
 
 The State rule begins by pulling the names $x_i$ out of each event handler $a_i$.
 %
