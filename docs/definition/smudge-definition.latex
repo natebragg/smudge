@@ -135,10 +135,14 @@ the empty environment $\varnothing$,
 some sequence of bindings of a name $x_i$ to type $\tau_i$,
 or constructed by concatenating two environments via $\Gamma_1 \circ \Gamma_2$.
 
-A type can either be a tyvar $\alpha$, some named \syntax{"machine" $x$}, an
-effect/capability $\phi$, a function $\tau_p \rightarrow \tau_r$, a tuple (or
-product) $\tau_1 \times \tau_2$, record $\Pi\ \Gamma$, or variant (also called
-a sum or tagged union) $\Sigma\ \Gamma$.
+A type can either be
+a tyvar $\alpha$,
+some named \syntax{"machine" $x$},
+a capability $\phi$,
+a function $\tau_p \rightarrow \tau_r$,
+a tuple (or product) $\tau_1 \times \tau_2$,
+a record $\Pi\ \Gamma$,
+or a variant (also called a tagged union) $\Sigma\ \Gamma$.
 %
 Additionally, there is a restriction that the final type in a chain of arrows
 (the return) must be $\phi$; currently functions do not chain (i.e., there are
@@ -155,9 +159,10 @@ Variants on the other hand do not strictly police the order of their fields;
 although Smudge does not include the unnamed sum type, this property is needed
 for inference.
 
-Effects or capabilities are either $\varnothing$ (no effect), or some set of
-effects that includes \syntax{"eventful" $x$}, meaning that the active event of
-type $x$ is available to the side effect in question.
+Capabilities are either
+$\varnothing$ (no capabilities),
+or some set of capabilities that includes \syntax{"eventful" $x$}, meaning that
+the active event of type $x$ is available to the side effect in question.
 %
 When compiled, this will appear in C as a normal parameter to the function,
 which returns \texttt{void}.
@@ -406,15 +411,15 @@ Both look up the type for the name in the type environment and return it.
     {\theta(\alpha\sim \tau)\issatisfied}
     \\\\
     \inference[EqualCapability]
-    {\theta (\phi_1, \phi_2 \sim \phi_3, \phi_4)\issatisfied}
+    {\theta(\phi_1, \phi_2 \sim \phi_3, \phi_4)\issatisfied}
     {\theta(\phi_1, \texttt{eventful }x, \phi_2 \sim \phi_3, \texttt{eventful }x, \phi_4)\issatisfied}
     \\\\
     \inference[EqualArrow]
-    {\theta (\tau_1 \sim \tau_3 \land \tau_2 \sim \tau_4)\issatisfied}
+    {\theta(\tau_1 \sim \tau_3 \land \tau_2 \sim \tau_4)\issatisfied}
     {\theta(\tau_1 \rightarrow \tau_2 \sim \tau_3 \rightarrow \tau_4)\issatisfied}
     \\\\
     \inference[EqualProduct]
-    {\theta (\tau_1 \sim \tau_3 \land \tau_2 \sim \tau_4)\issatisfied}
+    {\theta(\tau_1 \sim \tau_3 \land \tau_2 \sim \tau_4)\issatisfied}
     {\theta(\tau_1 \times \tau_2 \sim \tau_3 \times \tau_4)\issatisfied}
     \\\\
     \inference[EqualRecord]
