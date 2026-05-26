@@ -119,7 +119,7 @@ shown in Figure~\ref{fig:types}.
   \setlength{\grammarparsep}{2pt}
   \setlength{\grammarindent}{2em}
   \begin{grammar}
-    <$\Gamma$,$\mathcal{S}$> ::= $\varnothing$ | \{ <x> $\mapsto \tau$, \ldots, <x> $\mapsto \tau$ \} | $\Gamma$ $\Gamma$
+    <$\Gamma$,$\mathcal{S}$> ::= $\varnothing$ | \{ <x> $\mapsto \tau$, \ldots, <x> $\mapsto \tau$ \} | $\Gamma \circ \Gamma$
 
     <$\tau$> ::= $\alpha$ | "machine" <x> | $\phi$ | $\tau \rightarrow \tau$ | $\tau \times \tau$ | $\Pi\ \Gamma$ | $\Sigma\ \Gamma$
 
@@ -130,9 +130,10 @@ shown in Figure~\ref{fig:types}.
   \caption{\label{fig:types} Grammar of types, environments, and constraints}
 \end{figure}
 
-Environments are either the empty set $\varnothing$, designated as some
-sequences of bindings of a name $x_i$ to type $\tau_i$, or constructed by
-concatenating two environments $\Gamma_1 \Gamma_2$.
+Environments are either
+the empty environment $\varnothing$,
+some sequence of bindings of a name $x_i$ to type $\tau_i$,
+or constructed by concatenating two environments via $\Gamma_1 \circ \Gamma_2$.
 
 A type can either be a tyvar $\alpha$, some named \syntax{"machine" $x$}, an
 effect/capability $\phi$, a function $\tau_p \rightarrow \tau_r$, a tuple (or
@@ -187,8 +188,8 @@ to be $\tau_1 \times \tau_2$.
      % ... and scraping the entire program for foreign function names
      \Gamma_\delta\equiv \{ x \mapsto \alpha \mid \alpha \isfresh, \textsc{function}(x) \in m_1,\ldots,m_n \} \\
      % Recurse, typing each machine
-     C_1,\mathcal{S},\Gamma \Gamma_\delta \Gamma_m \vdash m_1 : \tau_1 & \ldots
-     & C_n,\mathcal{S},\Gamma \Gamma_\delta \Gamma_m \vdash m_n : \tau_n \\
+     C_1,\mathcal{S},\Gamma \circ \Gamma_\delta \circ \Gamma_m \vdash m_1 : \tau_1 & \ldots
+     & C_n,\mathcal{S},\Gamma \circ \Gamma_\delta \circ \Gamma_m \vdash m_n : \tau_n \\
      % Combine all constraint clauses and equate the returned types
      C\equiv \bigwedge_{i=1}^n C_i \land \alpha_i \sim \tau_i &
      % Solve the constraint system
