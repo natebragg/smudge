@@ -68,7 +68,9 @@ of events, and differently named events are of different types even if they
 contain the same data.
 %
 It is also effectful, which is to say that side effects do not return values,
-but instead have associated effects (also called capabilities) when run.
+but instead have associated effects when run.
+%
+To avoid ambiguity, we refer to these by another common name, capabilities.
 %
 Currently the only capability available is to handle the active event.
 
@@ -80,7 +82,7 @@ the syntax of machines and event handlers.
 Accordingly, types within a single module are inferred using a deterministic
 constraint solver.
 %
-Constraints are satisfied through monomorphic unification, save for effects and
+Constraints are satisfied through monomorphic unification, save for
 capabilities, whose unification depends on the flags supplied at invocation.
 
 To construct these rules, both the notation of natural deduction for type
@@ -97,7 +99,7 @@ For clarity, the following conventions are used:
     \item $\mathcal{S}$ refers to a signature environment, an ordered mapping from type names to their definition
     \item $\tau$ refers to a type
     \item $\alpha$ refers to a type variable (or ``tyvar'')
-    \item $\phi$ refers to a capability or effect
+    \item $\phi$ refers to a capability
     \item $C$ refers to the set of constraints
     \item $\theta$ refers to a substitution environment
     \item $x$ refers to an identifier
@@ -224,7 +226,7 @@ to be $\tau_1 \times \tau_2$.
      \Gamma_a\equiv \{ x_i \mapsto \alpha_i \mid \alpha_i \isfresh, 1\leq i\leq m\} \\
      % Recurse, typing each side effect
      C_1,\mathcal{S},\Gamma \circ \Gamma_a \vdash \check{\delta}_1 : \phi_1 & \ldots & C_n,\mathcal{S},\Gamma \circ \Gamma_a \vdash \check{\delta}_n : \phi_n \\
-     % The side effects all return an effect, which could include eventful x
+     % The side effects all return a capability, which could include eventful x
      C\equiv \bigwedge_{i=1}^n C_i \land \texttt{eventful } x <: \phi_i}
     {C,\mathcal{S},\Gamma \vdash \textsc{event}(x,\tuple{x_1,\ldots,x_m},\tuple{\check{\delta}_1,\ldots,\check{\delta}_n}) : \Pi\ \Gamma_a \rightarrow \varnothing}
     \\\\
@@ -319,7 +321,7 @@ tyvars.
 %
 It next recurses to the side effects $\check{\delta}$.
 %
-Because the return type for all side effects is an effect/capability, we use
+Because the return type for all side effects is a capability, we use
 $\phi$ to make this arrangement explicit.
 %
 We conjoin all constraints, adding additional subtype constraints which
@@ -329,7 +331,7 @@ The handler is then given the odd-looking type
 $\Pi\ \Gamma_a \rightarrow \varnothing$.
 %
 This is a function that takes a record over all of the handler's fields and has
-no effects.
+no capabilities.
 %
 There are two noteworthy things here---one, that this does not introduce a named
 record type into the signature environment as might be expected, relying instead
@@ -352,12 +354,12 @@ of constraining $\tau_i$ to the function $\alpha_i \rightarrow \alpha_{\phi_i}$,
 and then constraining $\alpha_\phi$ to be a subtype of $\alpha_{\phi_i}$, for
 each $i$ in the arguments.
 %
-With the help of the effect tyvar $\alpha_\phi$, it then constrains the function
+With the help of the capability tyvar $\alpha_\phi$, it then constrains the function
 type $\tau_{\check{\delta}}$ to be of arity $n$ of the corresponding argument
 types, then combines this with all other constraint clauses.
 %
 As each side effect represents a complete application, the returned type is the
-effect tyvar $\alpha_\phi$.
+capability tyvar $\alpha_\phi$.
 %
 The motivation for this rule's design is to guarantee that all capabilities
 required by $e_{\check{\delta}}$ are also required by $e_1$ through $e_n$.
@@ -368,7 +370,7 @@ will both be passed into the side effect and requested by its arguments.
 When the expression in question is a fully qualified event, the SendEvent rule
 looks up the signature $\tau$ of the machine $x_m$ in $\mathcal{S}$, and creates
 three fresh tyvars: $\alpha_a$ for the event record, $\alpha_\pi$ for the
-label-erased tuple type, and $\alpha_\phi$ for the effect.
+label-erased tuple type, and $\alpha_\phi$ for the capability.
 %
 To type correctly, the rule performs a few tricks.
 %
