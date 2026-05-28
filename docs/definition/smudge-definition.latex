@@ -99,7 +99,7 @@ For clarity, the following conventions are used:
     \item $\alpha$ refers to a type variable (or ``tyvar'')
     \item $\phi$ refers to a capability or effect
     \item $C$ refers to the set of constraints
-    \item $\theta$ refers to the substitutions
+    \item $\theta$ refers to a substitution environment
     \item $x$ refers to an identifier
 
     \item $m$ refers to a single state machine
@@ -119,7 +119,7 @@ shown in Figure~\ref{fig:types}.
   \setlength{\grammarparsep}{2pt}
   \setlength{\grammarindent}{2em}
   \begin{grammar}
-    <$\Gamma$,$\mathcal{S}$> ::= $\varnothing$ | \{ <x> $\mapsto \tau$, \ldots, <x> $\mapsto \tau$ \} | $\Gamma \circ \Gamma$
+    <$\Gamma$,$\mathcal{S}$,$\theta$> ::= $\varnothing$ | \{ <x> $\mapsto \tau$, \ldots, <x> $\mapsto \tau$ \} | $\Gamma \circ \Gamma$
 
     <$\tau$> ::= $\alpha$ | "machine" <x> | $\phi$ | $\tau \rightarrow \tau$ | $\tau \times \tau$ | $\Pi\ \Gamma$ | $\Sigma\ \Gamma$
 
