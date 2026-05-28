@@ -223,7 +223,7 @@ to be $\tau_1 \times \tau_2$.
     {% Create the event's type environment by mapping field names to fresh tyvars
      \Gamma_a\equiv \{ x_i \mapsto \alpha_i \mid \alpha_i \isfresh, 1\leq i\leq m\} \\
      % Recurse, typing each side effect
-     C_1,\mathcal{S},\Gamma \vdash \check{\delta}_1 : \phi_1 & \ldots & C_n,\mathcal{S},\Gamma \vdash \check{\delta}_n : \phi_n \\
+     C_1,\mathcal{S},\Gamma \circ \Gamma_a \vdash \check{\delta}_1 : \phi_1 & \ldots & C_n,\mathcal{S},\Gamma \circ \Gamma_a \vdash \check{\delta}_n : \phi_n \\
      % The side effects all return an effect, which could include eventful x
      C\equiv \bigwedge_{i=1}^n C_i \land \texttt{eventful } x <: \phi_i}
     {C,\mathcal{S},\Gamma \vdash \textsc{event}(x,\tuple{x_1,\ldots,x_m},\tuple{\check{\delta}_1,\ldots,\check{\delta}_n}) : \Pi\ \Gamma_a \rightarrow \varnothing}
