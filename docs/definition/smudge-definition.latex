@@ -100,6 +100,7 @@ For clarity, the following conventions are used:
     \item $\tau$ refers to a type
     \item $\alpha$ refers to a type variable (or ``tyvar'')
     \item $\phi$ refers to a capability
+    \item $\psi$ refers to a capability variable
     \item $C$ refers to the set of constraints
     \item $\theta$ refers to a substitution environment
     \item $x$ refers to an identifier
@@ -125,7 +126,7 @@ shown in Figure~\ref{fig:types}.
 
     <$\tau$> ::= $\alpha$ | "machine" <x> | $\phi$ | $\tau \rightarrow \tau$ | $\tau \times \tau$ | $\Pi\ \Gamma$ | $\Sigma\ \Gamma$
 
-    <$\phi$> ::= $\varnothing$ | $\phi$, "eventful" <x>
+    <$\phi$> ::= $\varnothing$ | $\psi$ | $\phi$, "eventful" <x>
 
     <C> ::= $\top$ | $\tau$ \textless: $\tau$ | $\tau \sim \tau$ | $\tau \sim$ "range" $\tau$ | <C> $\land$ <C>
   \end{grammar}
@@ -163,6 +164,7 @@ for inference.
 
 Capabilities are either
 $\varnothing$ (no capabilities),
+a capability variable $\psi$,
 or some set of capabilities that includes \syntax{"eventful" $x$}, meaning that
 the active event of type $x$ is available to the side effect in question.
 %
@@ -236,19 +238,19 @@ to be $\tau_1 \times \tau_2$.
      % Recurse to type the effect arguments
      C_1,\mathcal{S},\Gamma \vdash e_1 : \tau_1 \quad \ldots \quad C_n,\mathcal{S},\Gamma \vdash e_n : \tau_n \\
      % make a tyvar for the effect and for each effect arguments
-     \alpha_\phi,\alpha_1,\ldots,\alpha_n,\alpha_{\phi_1},\ldots,\alpha_{\phi_n} \arefresh \\
+     \alpha_1,\ldots,\alpha_n,\psi_1,\ldots,\psi_n,\psi \arefresh \\
      % Expose the returns of all effect arguments, and ensure that the capabilities are large enough to handle the effect's capabilities
-     C_\phi\equiv \tau_1 \sim \alpha_1 \rightarrow \alpha_{\phi_1} \land \alpha_\phi <: \alpha_{\phi_1} \land \ldots \land \tau_n \sim \alpha_n \rightarrow \alpha_{\phi_n} \land \alpha_\phi <: \alpha_{\phi_n} \\
+     C_\phi\equiv \tau_1 \sim \alpha_1 \rightarrow \psi_1 \land \psi <: \psi_1 \land \ldots \land \tau_n \sim \alpha_n \rightarrow \psi_n \land \psi <: \psi_n \\
      % Constrain the function to be a function of arity n of the corresponding type and effect, then combine all constraint clauses
-     C\equiv \tau_{\check{\delta}} \sim \tau_1 \times \ldots \times \tau_n \rightarrow \alpha_\phi \land C_\phi \land C_{\check{\delta}} \land \bigwedge_{i=1}^n C_i}
-    {C,\mathcal{S},\Gamma \vdash \textsc{effect}(e_{\check{\delta}},\tuple{e_1,\ldots,e_n}) : \alpha_\phi}
+     C\equiv \tau_{\check{\delta}} \sim \tau_1 \times \ldots \times \tau_n \rightarrow \psi \land C_\phi \land C_{\check{\delta}} \land \bigwedge_{i=1}^n C_i}
+    {C,\mathcal{S},\Gamma \vdash \textsc{effect}(e_{\check{\delta}},\tuple{e_1,\ldots,e_n}) : \psi}
     \\\\
     \inference[SendEvent]
     {% Look up the machine's signature, and create three fresh tyvars
-     \tau = \mathcal{S}(x_m) & \alpha_a,\alpha_\pi,\alpha_\phi \arefresh \\
+     \tau = \mathcal{S}(x_m) & \psi,\alpha_a,\alpha_\pi \arefresh \\
      % Constrain the signature to include a field of this name with a function type, constrain the argument to be a record, and break out the range of that record
      C\equiv \Sigma\ \{ x_a \mapsto \alpha_a \rightarrow \varnothing \} <: \tau \land \Pi\ \varnothing <: \alpha_a \land \alpha_\pi \sim \texttt{range } \alpha_a}
-    {C,\mathcal{S},\Gamma \vdash \textsc{sendevent}(x_m, x_a) : \alpha_\pi \rightarrow \alpha_\phi}
+    {C,\mathcal{S},\Gamma \vdash \textsc{sendevent}(x_m, x_a) : \alpha_\pi \rightarrow \psi}
     \\\\
     \inference[Function]
     {% Look up the name of the variable
@@ -345,21 +347,19 @@ $e_{\check{\delta}}$ and the argument expressions $e_i$ (we call these
 ''expressions'' for lack of a better term---in truth, they currently just range
 over names of events, foreign functions, and handler field labels).
 %
-We now require a number of fresh tyvars: one for the function expression,
-$\alpha_\phi$, and two more for each argument expressions, $\alpha_i$ and
-$\alpha_{\phi_i}$.
+We now require a number of fresh variables: two for each argument expression,
+$\alpha_i$ and $\psi_i$, and one for the function's overall capability, $\psi$.
 %
 The rule uses these to construct the constraint conjunction $C_\phi$, consisting
-of constraining $\tau_i$ to the function $\alpha_i \rightarrow \alpha_{\phi_i}$,
-and then constraining $\alpha_\phi$ to be a subtype of $\alpha_{\phi_i}$, for
-each $i$ in the arguments.
+of constraining, for each $i$ in the arguments, $\tau_i$ to the function
+$\alpha_i \rightarrow \psi_i$, and then constraining $\psi$ to be a subtype of $\psi_i$.
 %
-With the help of the capability tyvar $\alpha_\phi$, it then constrains the function
+With the help of the capability var $\psi$, it then constrains the function
 type $\tau_{\check{\delta}}$ to be of arity $n$ of the corresponding argument
 types, then combines this with all other constraint clauses.
 %
 As each side effect represents a complete application, the returned type is the
-capability tyvar $\alpha_\phi$.
+capability var $\phi$.
 %
 The motivation for this rule's design is to guarantee that all capabilities
 required by $e_{\check{\delta}}$ are also required by $e_1$ through $e_n$.
@@ -369,8 +369,9 @@ will both be passed into the side effect and requested by its arguments.
 
 When the expression in question is a fully qualified event, the SendEvent rule
 looks up the signature $\tau$ of the machine $x_m$ in $\mathcal{S}$, and creates
-three fresh tyvars: $\alpha_a$ for the event record, $\alpha_\pi$ for the
-label-erased tuple type, and $\alpha_\phi$ for the capability.
+the fresh capability var $\psi$, and fresh tyvars
+$\alpha_a$ for the event record and $\alpha_\pi$ for the label-erased tuple
+type.
 %
 To type correctly, the rule performs a few tricks.
 %
