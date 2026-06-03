@@ -1,4 +1,5 @@
 \documentclass{article}
+\usepackage{natbib}
 \usepackage{amsmath}
 \usepackage{amssymb}
 \usepackage{amsthm}
@@ -12,12 +13,26 @@
 \newcommand{\issatisfied}{\operatorname{is\, satisfied}}
 \newcommand{\isfresh}{\operatorname{is\, fresh}}
 \newcommand{\arefresh}{\operatorname{are\, fresh}}
+\newcommand{\vdashctx}[1]{\vdash^{\mkern-10mu\scriptscriptstyle\rule[-1ex]{0pt}{0pt}#1}}
 
 \newcommand{\void}{\texttt{void}}
 
 \newcommand{\hastype}[3]{\#1 \vdash #2 : #3}
 \newcommand{\tuple}[1]{\left\langle #1 \right\rangle}
 \newcommand{\yield}[2]{\tuple{#1} \rightarrow \tuple{#2}}
+
+\begin{filecontents}{refs.bib}
+@article{DovierPontelliRossi2006,
+  title={Set unification},
+  volume={6},
+  DOI={10.1017/S1471068406002730},
+  number={6},
+  journal={Theory and Practice of Logic Programming},
+  author={Dovier, Agostino and Pontelli, Enrico and Rossi, Gianfranco},
+  year={2006},
+  pages={645–701}
+}
+\end{filecontents}
 
 \title{The Smudge Language Definition}
 
@@ -96,6 +111,7 @@ statements, whose types can be non-uniform.
 For clarity, the following conventions are used:
 \begin{itemize}
     \item $\Gamma$ refers to a type environment, an ordered mapping from names to types
+    \item $\gamma$ refers to an environment variable (or ``envar'')
     \item $\mathcal{S}$ refers to a signature environment, an ordered mapping from type names to their definition
     \item $\tau$ refers to a type
     \item $\alpha$ refers to a type variable (or ``tyvar'')
@@ -122,19 +138,20 @@ shown in Figure~\ref{fig:types}.
   \setlength{\grammarparsep}{2pt}
   \setlength{\grammarindent}{2em}
   \begin{grammar}
-    <$\Gamma$,$\mathcal{S}$,$\theta$> ::= $\varnothing$ | \{ <x> $\mapsto \tau$, \ldots, <x> $\mapsto \tau$ \} | $\Gamma \circ \Gamma$
+    <$\Gamma$,$\mathcal{S}$,$\theta$> ::= $\varnothing$ | $\gamma$ | \{ <x> $\mapsto \tau$, \ldots, <x> $\mapsto \tau$ \} | $\Gamma \circ \Gamma$
 
     <$\tau$> ::= $\alpha$ | "machine" <x> | $\phi$ | $\tau \rightarrow \tau$ | $\tau \times \tau$ | $\Pi\ \Gamma$ | $\Sigma\ \Gamma$
 
     <$\phi$> ::= $\varnothing$ | $\psi$ | $\phi$, "eventful" <x>
 
-    <C> ::= $\top$ | $\tau$ \textless: $\tau$ | $\tau \sim \tau$ | $\tau \sim$ "range" $\tau$ | <C> $\land$ <C>
+    <C> ::= $\top$ | $\tau \sim \tau$ | $\tau \sim$ "range" $\tau$ | <C> $\land$ <C>
   \end{grammar}
   \caption{\label{fig:types} Grammar of types, environments, and constraints}
 \end{figure}
 
 Environments are either
 the empty environment $\varnothing$,
+an envar $\gamma$,
 some sequence of bindings of a name $x_i$ to type $\tau_i$,
 or constructed by concatenating two environments via $\Gamma_1 \circ \Gamma_2$.
 
@@ -171,10 +188,9 @@ the active event of type $x$ is available to the side effect in question.
 When compiled, this will appear in C as a normal parameter to the function,
 which returns \texttt{void}.
 
-Constraints come in three flavors:
+Constraints come in two flavors:
 trivially true ($\top$),
-subtype ($\tau_1 <: \tau_2$), and
-equality ($\tau_1 \sim \tau_2$).
+and equality ($\tau_1 \sim \tau_2$).
 %
 Multiple constraints are conjoined logically ($C_1 \land C_2$).
 %
@@ -207,9 +223,9 @@ to be $\tau_1 \times \tau_2$.
     \\\\
     \inference[StateMachine]
     {% Recurse, typing each state
-     C_1,\mathcal{S},\Gamma \vdash q_1 : \tau_1 & \ldots & C_n,\mathcal{S},\Gamma \vdash q_n : \tau_n \\
+     C_1,\mathcal{S},\Gamma \vdash q_1 : \Sigma \Gamma_1 & \ldots & C_n,\mathcal{S},\Gamma \vdash q_n : \Sigma \Gamma_n \\
      % Combine all constraint clauses and build the supertype of the returned state types
-     C\equiv \bigwedge_{i=1}^n C_i \land \tau_i <: \alpha & \alpha \isfresh}
+     C\equiv \bigwedge_{i=1}^n C_i \land \Sigma \Gamma_i \circ \gamma_i \sim \alpha & \alpha,\gamma_i \arefresh}
     {C,\mathcal{S},\Gamma \vdash \textsc{machine}(\_,\tuple{q_1,\ldots,q_n}) : \alpha}
     \\\\
     \inference[State]
@@ -226,10 +242,10 @@ to be $\tau_1 \times \tau_2$.
     \inference[Event]
     {% Create the event's type environment by mapping field names to fresh tyvars
      \Gamma_a\equiv \{ x_i \mapsto \alpha_i \mid \alpha_i \isfresh, 1\leq i\leq m\} \\
-     % Recurse, typing each side effect
-     C_1,\mathcal{S},\Gamma \circ \Gamma_a \vdash \check{\delta}_1 : \phi_1 & \ldots & C_n,\mathcal{S},\Gamma \circ \Gamma_a \vdash \check{\delta}_n : \phi_n \\
-     % The side effects all return a capability, which could include eventful x
-     C\equiv \bigwedge_{i=1}^n C_i \land \texttt{eventful } x <: \phi_i}
+     % Recurse, indicating the handler x, typing each side effect
+     C_1,\mathcal{S},\Gamma \circ \Gamma_a \vdashctx{x} \check{\delta}_1 : \phi_1 & \ldots & C_n,\mathcal{S},\Gamma \circ \Gamma_a \vdashctx{x} \check{\delta}_n : \phi_n \\
+     % Conjoin all constraints
+     C\equiv \bigwedge_{i=1}^n C_i}
     {C,\mathcal{S},\Gamma \vdash \textsc{event}(x,\tuple{x_1,\ldots,x_m},\tuple{\check{\delta}_1,\ldots,\check{\delta}_n}) : \Pi\ \Gamma_a \rightarrow \varnothing}
     \\\\
     \inference[Effect]
@@ -240,16 +256,16 @@ to be $\tau_1 \times \tau_2$.
      % make a tyvar for the effect and for each effect arguments
      \alpha_1,\ldots,\alpha_n,\psi_1,\ldots,\psi_n,\psi \arefresh \\
      % Expose the returns of all effect arguments, and ensure that the capabilities are large enough to handle the effect's capabilities
-     C_\phi\equiv \tau_1 \sim \alpha_1 \rightarrow \psi_1 \land \psi <: \psi_1 \land \ldots \land \tau_n \sim \alpha_n \rightarrow \psi_n \land \psi <: \psi_n \\
+     C_\phi\equiv \tau_1 \sim \alpha_1 \rightarrow \psi_1, \texttt{eventful } x \land \ldots \land \tau_n \sim \alpha_n \rightarrow \psi_n, \texttt{eventful } x \\
      % Constrain the function to be a function of arity n of the corresponding type and effect, then combine all constraint clauses
-     C\equiv \tau_{\check{\delta}} \sim \tau_1 \times \ldots \times \tau_n \rightarrow \psi \land C_\phi \land C_{\check{\delta}} \land \bigwedge_{i=1}^n C_i}
-    {C,\mathcal{S},\Gamma \vdash \textsc{effect}(e_{\check{\delta}},\tuple{e_1,\ldots,e_n}) : \psi}
+     C\equiv \tau_{\check{\delta}} \sim \tau_1 \times \ldots \times \tau_n \rightarrow \psi, \texttt{eventful } x \land C_\phi \land C_{\check{\delta}} \land \bigwedge_{i=1}^n C_i}
+    {C,\mathcal{S},\Gamma \vdashctx{x} \textsc{effect}(e_{\check{\delta}},\tuple{e_1,\ldots,e_n}) : \psi, \texttt{eventful } x}
     \\\\
     \inference[SendEvent]
     {% Look up the machine's signature, and create three fresh tyvars
-     \tau = \mathcal{S}(x_m) & \psi,\alpha_a,\alpha_\pi \arefresh \\
+     \tau = \mathcal{S}(x_m) & \gamma,\psi,\alpha_a,\alpha_\pi \arefresh \\
      % Constrain the signature to include a field of this name with a function type, constrain the argument to be a record, and break out the range of that record
-     C\equiv \Sigma\ \{ x_a \mapsto \alpha_a \rightarrow \varnothing \} <: \tau \land \Pi\ \varnothing <: \alpha_a \land \alpha_\pi \sim \texttt{range } \alpha_a}
+     C\equiv \Sigma\ \{ x_a \mapsto \alpha_a \rightarrow \varnothing \} \circ \gamma \sim \tau \land \alpha_\pi \sim \texttt{range } \alpha_a}
     {C,\mathcal{S},\Gamma \vdash \textsc{sendevent}(x_m, x_a) : \alpha_\pi \rightarrow \psi}
     \\\\
     \inference[Function]
@@ -307,8 +323,15 @@ The StateMachine rule simply recurses, typing each state $q_i$ individually.
 It then combines all constraint clauses $C_i$ with new constraints on the
 machine's overall type, represented by the fresh tyvar $\alpha$.
 %
-These new constraints guarantee that $\alpha$ is the supertype of the inferred type
-of each state $\tau_i$.
+These new constraints guarantee that $\alpha$ is equivalent to the inferred type
+of each state $\Sigma \Gamma_i$, concatenated with an uninterrogated ``slack'' envar
+$\gamma_i$.
+%
+We use such slack variables to ``absorb'' the rest of the overall variant type,
+allowing us to ensure certain tags are present but ignore the remaining tags.
+%
+We shall see how the obvious resulting ambiguity is addressed in the discussion
+of unification below.
 
 The State rule begins by pulling the names $x_i$ out of each event handler $a_i$.
 %
@@ -321,13 +344,16 @@ To infer the type for event handlers, the Event rule creates the event's type
 environment $\Gamma_a$ by mapping field names $x_1$ through $x_m$ to fresh
 tyvars.
 %
-It next recurses to the side effects $\check{\delta}$.
+It next recurses to the side effects $\check{\delta}$, parameterized by the
+current event $x$.
+%
+This parameterization is a deviation from the typical type inference approach,
+but avoids greatly increasing the complexity of unification, described below.
 %
 Because the return type for all side effects is a capability, we use
 $\phi$ to make this arrangement explicit.
 %
-We conjoin all constraints, adding additional subtype constraints which
-augment each $\phi_i$ with the capability \syntax{"eventful" $x$}.
+The overall constraint is just the conjunction of the sub-constraints.
 %
 The handler is then given the odd-looking type
 $\Pi\ \Gamma_a \rightarrow \varnothing$.
@@ -352,36 +378,31 @@ $\alpha_i$ and $\psi_i$, and one for the function's overall capability, $\psi$.
 %
 The rule uses these to construct the constraint conjunction $C_\phi$, consisting
 of constraining, for each $i$ in the arguments, $\tau_i$ to the function
-$\alpha_i \rightarrow \psi_i$, and then constraining $\psi$ to be a subtype of $\psi_i$.
+$\alpha_i \rightarrow \psi_i, \texttt{eventful } x$, which uses the slack
+variable $\psi_i$ to absorb capabilities other than the current event $x$.
 %
 With the help of the capability var $\psi$, it then constrains the function
 type $\tau_{\check{\delta}}$ to be of arity $n$ of the corresponding argument
 types, then combines this with all other constraint clauses.
 %
 As each side effect represents a complete application, the returned type is the
-capability var $\phi$.
-%
-The motivation for this rule's design is to guarantee that all capabilities
-required by $e_{\check{\delta}}$ are also required by $e_1$ through $e_n$.
+capability var $\phi$, with the addition of the capability \syntax{"eventful" $x$}.
 %
 Practically speaking, this means that in the generated code, the active event
 will both be passed into the side effect and requested by its arguments.
 
 When the expression in question is a fully qualified event, the SendEvent rule
 looks up the signature $\tau$ of the machine $x_m$ in $\mathcal{S}$, and creates
-the fresh capability var $\psi$, and fresh tyvars
+the fresh slack envar $\gamma$, capability var $\psi$, and fresh tyvars
 $\alpha_a$ for the event record and $\alpha_\pi$ for the label-erased tuple
 type.
 %
 To type correctly, the rule performs a few tricks.
 %
 First, it constrains the machine's signature to include a binding for the event
-$x_a$ of function type.
+$x_a$ of function type, forcing $\gamma$ to absorb the remaining bindings.
 %
-Second, it constrains the domain of that function to have a record type, but
-does not specify any field names.
-%
-Third, it adds a constraint that erases the labels for that record type, taking
+Second, it adds a constraint that erases the labels for that record type, taking
 only the range as the product type $\alpha_\pi$.
 %
 During code generation, the external API provides only the version that accepts
@@ -436,17 +457,16 @@ Both look up the type for the name in the type environment and return it.
      \theta (\tau_{x_1} \sim \tau_{y_1} \land \ldots \land \tau_{x_m} \sim \tau_{y_n})\issatisfied}
     {\theta(\tau_{x_1} \times \ldots \times \tau_{x_m}\sim \texttt{range } \Pi\ \Gamma_y)\issatisfied}
   \end{array}\]
-  \caption{\label{fig:unification} Constraint unification for non-subtype constraints}
+  \caption{\label{fig:unification} Constraint unification for non-ACUI constraints}
 \end{figure}
 
 After accruing constraints within a module, unification satisfies them, yielding
 an assignment of tyvars to types, commonly known as a substitution.
 %
-Figure~\ref{fig:unification} gives the rules used to solve conjunctions of
-trivially true and equality constraints, and the subtyping rules are listed in
-Figure~\ref{fig:unificationsubtype}.
+We separate the algorithm into two fragments: standand and ACUI.
 %
-Let us first discuss the non-subtype rules.
+We start with a discussion of the standard unification rules in
+Figure~\ref{fig:unification}.
 
 To solve multiple constraints, the Conjoin rule first finds a substitution
 $\theta_1$ that satisfies the first constraint $C_1$, then applies that
@@ -501,40 +521,134 @@ until the end of unification to guarantee that they can be solved.
 \begin{figure}
   \[\begin{array}{c}
     \inference[EqualCapability]
-    {\theta(\phi_1, \phi_2 \sim \phi_3, \phi_4)\issatisfied}
-    {\theta(\phi_1, \texttt{eventful }x, \phi_2 \sim \phi_3, \texttt{eventful }x, \phi_4)\issatisfied}
+    {\theta(\phi_1 \sim \phi_2)\issatisfied}
+    {\theta(\phi_1, \texttt{eventful }x \sim \phi_2,\texttt{eventful }x)\issatisfied}
+    \\\\
+    \inference[EqualCapabilityOneVar]
+    {\theta\equiv \{\psi \mapsto \overline{\texttt{eventful }y} \}}
+    {\theta(\psi \sim \overline{\texttt{eventful }y})\issatisfied}
+    \\\\
+    \inference[EqualCapabilityTwoVars]
+    {\theta\equiv \{\psi_x \mapsto \psi_z,\overline{\texttt{eventful }y},
+                    \psi_y \mapsto \psi_z,\overline{\texttt{eventful }x} \} \\
+     \psi_z\isfresh &
+     \psi_x \neq \psi_y &
+     \overline{\texttt{eventful }x} \cap \overline{\texttt{eventful }y} = \varnothing}
+    {\theta(\psi_x,\overline{\texttt{eventful }x} \sim \psi_y,\overline{\texttt{eventful }y})\issatisfied}
+    \\\\
+    \inference[EqualEnvar]
+    {\Gamma\equiv\{ x_1 \mapsto \tau_1, \ldots, x_n \mapsto \tau_n \} \\
+     \gamma\not\in \textrm{ftv}(\tau_1) & \ldots & \gamma\not\in \textrm{ftv}(\tau_n) \\
+     \theta\equiv \{\gamma \mapsto \Gamma \}}
+    {\theta(\gamma\sim \Gamma)\issatisfied}
     \\\\
     \inference[EqualVariant]
-    {\Gamma_x\equiv\{ x_1 \mapsto \tau_{x_1}, \ldots, x_m \mapsto \tau_{x_m} \} \\
-     \Gamma_y\equiv\{ y_1 \mapsto \tau_{y_1}, \ldots, y_n \mapsto \tau_{y_n} \} \\
-     m = n &
-     \theta (\bigwedge_{i=1}^m \tau_{x_i} \sim \tau_{y_j} \mid x_i = y_j)\issatisfied}
+    {\Gamma_x\equiv\{z_1 \mapsto \tau_{z_{1_x}}, \ldots, z_m \mapsto \tau_{z_{m_x}} \} \\
+     \Gamma_y\equiv\{z_1 \mapsto \tau_{z_{1_y}}, \ldots, z_m \mapsto \tau_{z_{m_y}} \} \\
+     \theta (\bigwedge_{i=1}^m \tau_{z_{i_x}} \sim \tau_{z_{i_y}})\issatisfied}
     {\theta(\Sigma\ \Gamma_x\sim \Sigma\ \Gamma_y)\issatisfied}
+    \\\\
+    \inference[EqualVariantEqVars]
+    {\theta(\Sigma\ \Gamma_x\sim \Sigma\ \Gamma_y)\issatisfied}
+    {\theta(\Sigma\ \Gamma_x \circ \gamma \sim \Sigma\ \Gamma_y \circ \gamma)\issatisfied}
+    \\\\
+    \inference[EqualVariantOneVar]
+    {\Gamma_x\equiv\{ z_1 \mapsto \tau_{z_{1_x}}, \ldots, z_m \mapsto \tau_{z_{m_x}} \} \\
+     \Gamma_y\equiv\{ z_1 \mapsto \tau_{z_{1_y}}, \ldots, z_m \mapsto \tau_{z_{m_y}}, y_1 \mapsto \tau_{y_1}, \ldots, y_p \mapsto \tau_{y_p} \} \\
+     \Gamma_{y/x}\equiv\{ y_1 \mapsto \tau_{y_1}, \ldots, y_p \mapsto \tau_{y_p}\} \\
+     \theta(\gamma\sim\Gamma_{y/x}\land \bigwedge_{i=1}^m \tau_{z_{i_x}} \sim \tau_{z_{i_y}})\issatisfied}
+    {\theta(\Sigma\ \Gamma_x \circ \gamma \sim \Sigma\ \Gamma_y)\issatisfied}
+    \\\\
+    \inference[EqualVariantTwoVars]
+    {\Gamma_x\equiv\{ z_1 \mapsto \tau_{z_{1_x}}, \ldots, z_m \mapsto \tau_{z_{m_x}}, x_1 \mapsto \tau_{x_1}, \ldots, x_n \mapsto \tau_{x_n} \} \\
+     \Gamma_y\equiv\{ z_1 \mapsto \tau_{z_{1_y}}, \ldots, z_m \mapsto \tau_{z_{m_y}}, y_1 \mapsto \tau_{y_1}, \ldots, y_p \mapsto \tau_{y_p} \} \\
+     \Gamma_{x/y}\equiv\{ x_1 \mapsto \tau_{x_1}, \ldots, x_n \mapsto \tau_{x_n}\} & \gamma_x\neq\gamma_y \\
+     \Gamma_{y/x}\equiv\{ y_1 \mapsto \tau_{y_1}, \ldots, y_p \mapsto \tau_{y_p}\} & \gamma_z\isfresh \\
+     \theta (\gamma_x\sim\Gamma_{y/x}\circ\gamma_z\land\gamma_y\sim\Gamma_{x/y}\circ\gamma_z\land\bigwedge_{i=1}^m \tau_{z_{i_x}} \sim \tau_{z_{i_y}})\issatisfied}
+    {\theta(\Sigma\ \Gamma_x \circ \gamma_x\sim \Sigma\ \Gamma_y \circ \gamma_y)\issatisfied}
   \end{array}\]
+  \caption{\label{fig:unificationacui} Constraint unification for ACUI constraints}
 \end{figure}
 
-As capabilities form a set, the order does not matter.
+Because capabilities and variants form associative and commutative sets, our
+algorithm includes ACUI unification as a subroutine.~\citep{DovierPontelliRossi2006}.
 %
-Accordingly, the EqualCapability rule sidesteps the exact order of capabilities;
+Figure~\ref{fig:unificationacui} gives the unification rules.
+%
+Specifically, this discharges environment and capability variables by
+restricting terms to the gflat(1) case, i.e., sets containing only concrete
+values, unioned with at most one variable of set kind.
+
+As just mentioned, capabilities form a set; as such, the order does not matter,
+so for simplicity we treat them as being ordered such that all common elements
+conveniently appear at the end, allowing us to write syntax-guided rules.
+%
+The EqualCapability rule is the recursive case---
 provided that both sets contain the \syntax{"eventful" $x$} capability and the
 remaining sets match, the constraint is satisfied.
+%
+During execution, this rule will remove all capabilities shared by both sets,
+leaving only the differences to the remaining rules.
+%
+The EqualCapabilityOneVar rule handles the base case where one side contains
+only a variable $\psi$, and the other only a set of concrete capabilities
+$\overline{\texttt{eventful }y}$, which yields a substitution $\theta$ of $\psi$
+mapped to that capability set.
+%
+Note that this does not handle when $\psi$ does not appear alone---when there
+are extra capabilities, because they must be absent from the other side of the
+constraint (or they would have been discharged under the EqualCapability rule),
+unification fails.
+%
+The EqualCapabilityTwoVars rule is the general case of gflat(1) ACUI
+unification.
+%
+Similar to the case with one variable, we create a substitution where $\psi_x$
+and $\psi_y$ are mapped to their counterparts, but with a twist---they both
+include some fresh variable $\psi_z$, accounting for unknown subsets that will
+be determined later by other constraints (or reduced to $\varnothing$ at the end
+of unification).
 
-The EqualVariant is similar, but with the twist that the field name order does
+The EqualEnvar rule is similar to the EqualTyvar rule, in that it performs an
+occurs check on the every type in the range of the environment, and then
+generates a substitution $\theta$.
+
+As mentioned previously, variant field name order does
 not matter---two variants with the same field names in different order compare
 the same, and are thus the same type (so long as no fields are missing).
 %
-We achieve this by iterating the fields of $\Gamma_x$, finding the same field
-from $\Gamma_y$, and unifying their types.
-
-\begin{figure}
-  \[\begin{array}{c}
-    \inference[SubtypeReflexive]
-    {}
-    {\tau <: \tau\issatisfied}
-    \\\\
-  \end{array}\]
-  \caption{\label{fig:unificationsubtype} Constraint unification for subtype constraints}
-\end{figure}
+As with capabilities, this requires ACUI unification, and as we did in those
+rules, we will treat each variant's environment as conveniently ordered to allow
+for our rules to be syntax guided.
+%
+The EqualVariant rule unpacks the environments $\Gamma_x$ and $\Gamma_y$ that
+have all the same fields, $z_1$ through $z_m$.
+%
+It then unifies the corresponding types to get the substitution $\theta$.
+%
+Note that there no envars in this case, and no unmatched fields (which would
+cause unification to fail).
+%
+EqualVariantEqVars is a degenerate case, where an identical envar $\gamma$
+appears on both sides of the constraint; this can safely be stripped, and
+the remaining environments can be unified as just described.
+%
+A more interesting rule is EqualVariantOneVar, which is similar to
+EqualCapabilityOneVar in that the variable $\gamma$ only appears on one side of
+the constraint.
+%
+The main difference from that rule is that we have to unify the types of common
+fields, $\tau_{z_{i_x}}$ to $\tau_{z_{i_y}}$, as in the EqualVariant rule.
+%
+Otherwise, we construct the environment containing the symmetric difference,
+$\Gamma_{y/x}$, to use in a new constraint with $\gamma$.
+%
+Likewise, EqualVariantTwoVars is the general case of gflat(1) ACUI unification.
+%
+This time, after unpacking the intersection and symmetric differences of
+$\Gamma_x$ and $\Gamma_y$ and checking that $\gamma_x\neq\gamma_y$, we have to
+unify $\gamma_x$ with $\Gamma_{y/x}$ composed with a fresh envar $\gamma_z$,
+vice versa for $\gamma_y$, then unify the intersection.
 
 \subsection*{Monomorphic unification rules}
 These rules dictate type resolution in the case where the types must match.
@@ -891,5 +1005,8 @@ a suffix of $q(y)$, because the length codes must differ.
 With the unqualified, qualified, and single character translations separately
 proven injective, and as the overall translation is a composition of these, the
 overall translation is thus proven injective.\qed
+
+\bibliographystyle{abbrv}
+\bibliography{refs}
 
 \end{document}
