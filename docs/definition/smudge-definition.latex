@@ -476,7 +476,7 @@ match, and the same for the results $\tau_2$ and $\tau_4$.
 
 The EqualProduct rule for tuples looks similar and behaves the same.
 
-The EqualRecord rule sooks intimidating, but is actually straightforward.
+The EqualRecord rule looks intimidating, but is actually straightforward.
 %
 It starts by splitting out both records to expose the field names and their
 types.
