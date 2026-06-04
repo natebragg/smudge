@@ -6,6 +6,7 @@
 \usepackage{graphics}
 \usepackage{semantic}
 \usepackage{syntax}
+\usepackage{stmaryrd}
 \usepackage{verbatimbox}
 
 \newcommand{\dom}{\operatorname{dom}}
@@ -14,12 +15,11 @@
 \newcommand{\isfresh}{\operatorname{is\, fresh}}
 \newcommand{\arefresh}{\operatorname{are\, fresh}}
 \newcommand{\vdashctx}[1]{\vdash^{\mkern-10mu\scriptscriptstyle\rule[-1ex]{0pt}{0pt}#1}}
+\newcommand{\denotes}[1]{\ensuremath{\llbracket}#1\ensuremath{\rrbracket}}
 
 \newcommand{\void}{\texttt{void}}
 
-\newcommand{\hastype}[3]{\#1 \vdash #2 : #3}
 \newcommand{\tuple}[1]{\left\langle #1 \right\rangle}
-\newcommand{\yield}[2]{\tuple{#1} \rightarrow \tuple{#2}}
 
 \begin{filecontents}{refs.bib}
 @article{DovierPontelliRossi2006,
@@ -95,10 +95,7 @@ There is also no way to explicitly define types---they are defined implicitly by
 the syntax of machines and event handlers.
 %
 Accordingly, types within a single module are inferred using a deterministic
-constraint solver.
-%
-Constraints are satisfied through monomorphic unification, save for
-capabilities, whose unification depends on the flags supplied at invocation.
+constraint solver, using a combination of traditional and ACUI unification.
 
 To construct these rules, both the notation of natural deduction for type
 inference and the notation for automata are useful here, with a slight
@@ -186,7 +183,7 @@ or some set of capabilities that includes \syntax{"eventful" $x$}, meaning that
 the active event of type $x$ is available to the side effect in question.
 %
 When compiled, this will appear in C as a normal parameter to the function,
-which returns \texttt{void}.
+which returns \void.
 
 Constraints come in two flavors:
 trivially true ($\top$),
@@ -650,108 +647,43 @@ $\Gamma_x$ and $\Gamma_y$ and checking that $\gamma_x\neq\gamma_y$, we have to
 unify $\gamma_x$ with $\Gamma_{y/x}$ composed with a fresh envar $\gamma_z$,
 vice versa for $\gamma_y$, then unify the intersection.
 
-\subsection*{Monomorphic unification rules}
-These rules dictate type resolution in the case where the types must match.
-This behavior can be selected by supplying a flag at invocation.  It resolves
-conflicting constraints by rejecting the module as ill-formed.
+\subsection*{Capability Resolution}
 
-\[
-    \inference[SubtypeEqual]
-    {\tau_1=\tau_2}{\tau_1\instantiates\tau_2}
-\]
+During unification, functions used in multiple contexts will accumulate
+capabilities according to each context.
+%
+There are times when having multiple capabilities is undesirable.
+%
+This is handled in a pass called \emph{capability resolution}.
+%
+There are three resolution strategies: \emph{strict}, \emph{permissive}, and
+\emph{passthrough}.
 
-\subsection*{Subtype polymorphic unification rules}
-The default unification method is to simplify the types using polymorphism.  It
-is instructive to first consider a non-deterministic rule for simplification.
-According to this rule, a simplified type is a type that is strictly more
-general than either of two other types, such that these two types are subtypes
-of it.
-\[
-    \inference[SimplifyNonDeterministic]
-    {\hastype{\Gamma}{\check{\delta}_1}{\tau_1\times\ldots\times\tau_n\rightarrow\tau}\\
-     \hastype{\Gamma}{\check{\delta}_2}{\tau_1'\times\ldots\times\tau_m'\rightarrow\tau'}\\
-     \tau_1\times\ldots\times\tau_n\rightarrow\tau\instantiates\tau_1''\times\ldots\times\tau_k''\rightarrow\tau''\\
-     \tau_1'\times\ldots\times\tau_m'\rightarrow\tau'\instantiates\tau_1''\times\ldots\times\tau_k''\rightarrow\tau''}
-    {\hastype{\Gamma}{\textsc{simplify}(\check{\delta}_1, \check{\delta}_2)}{\tau_1''\times\ldots\times\tau_k''\rightarrow\tau''}}
-\]
+The strict resolution strategy, invoked at invocation by supplying either the
+\texttt{--cap-res=strict} flag, or the legacy \texttt{--strict} flag, enforces
+the restriction that functions can only be used in a single context.
+%
+It resolves conflicting capabilities by rejecting the module as ill-formed.
 
-However, this definition is insufficient to specify the actual result of type
-unification.  For this, the accumulated constraints must be resolved into a
-supertype through additional rules that build on top of the monomorphic ones.
+The permissive resolution strategy, invoked via the
+\texttt{--cap-res=permissive} flag, resolves constraint sets according to the
+rule:
 
-These include the basic subtyping rules that dictate structural relationships
-directly between types.  For clarity the n-ary rule is included, although it is
-implicit in the arrow rule.
+\begin{align*}
+  \denotes{\varnothing} &= \void \\
+  \denotes{\{\texttt{eventful }x \}} &= \texttt{eventful }x \\
+  \denotes{\{\texttt{eventful }x, \texttt{eventful }y, \ldots \}} &= \void
+\end{align*}
 
-A key detail worth drawing attention to in these rules is that function return
-and parameter types are generalized in the opposite direction --- return types
-covariantly, and parameter types contravariantly.  This is because for a
-function, a concrete return type is actually a more general type.
+The passthrough resolution strategy, invoked explicitly by supplying the
+\texttt{--cap-res=passthrough} flag, does not make any changes.
+%
+The handling of this polymorphism is handled during code generation, using a
+union over the allowed capabilities.
 
-\[
-    \inference[SubtypeVoid]
-    {}{\void\instantiates\tau}
-\]
-
-\[
-    \inference[SubtypeReflexive]
-    {}{\tau\instantiates\tau}
-\]
-
-\[
-    \inference[SubtypeArrow]
-    {\tau''\instantiates\tau&\tau'\instantiates\tau'''}
-    {\tau\rightarrow\tau'\instantiates\tau''\rightarrow\tau'''}
-\]
-
-\[
-    \inference[SubtypeN-ary]
-    {\tau_1'\instantiates\tau_1&\tau_2\times\ldots\times\tau_n\rightarrow\tau\instantiates\tau_2'\times\ldots\times\tau_n'\rightarrow\tau'}
-    {\tau_1\times\tau_2\times\ldots\times\tau_n\rightarrow\tau\instantiates\tau_1'\times\tau_2'\times\ldots\times\tau_n'\rightarrow\tau'}
-\]
-
-In addition, meet and join rules dictate relationships that are use-dependent.
-Although Smudge is only capable of directly inferring joins, meet rules are
-required to resolve parameter contravariance.
-
-\[
-    \inference[SubtypeMeetLeft]
-    {}{\tau_1\land\tau_2\instantiates\tau_1}
-\]
-
-\[
-    \inference[SubtypeMeetRight]
-    {}{\tau_1\land\tau_2\instantiates\tau_2}
-\]
-
-\[
-    \inference[SubtypeMeet]
-    {\tau\instantiates\tau_1&\tau\instantiates\tau_2}
-    {\tau\instantiates\tau_1\land\tau_2}
-\]
-
-\[
-    \inference[SubtypeJoinLeft]
-    {}{\tau_1\instantiates\tau_1\lor\tau_2}
-\]
-
-\[
-    \inference[SubtypeJoinRight]
-    {}{\tau_2\instantiates\tau_1\lor\tau_2}
-\]
-
-\[
-    \inference[SubtypeJoin]
-    {\tau_1\instantiates\tau&\tau_2\instantiates\tau}
-    {\tau_1\lor\tau_2\instantiates\tau}
-\]
-
-\[
-    \inference[SubtypeJoinArrow]
-    {}
-    {\tau\rightarrow\tau'\lor\tau''\rightarrow\tau'''\instantiates
-     (\tau''\land\tau)\rightarrow(\tau'\lor\tau''')}
-\]
+Up to version 0.7.1, permissive was the default strategy.
+%
+Starting with version 0.8.0, passthrough is the default strategy.
 
 \section*{Foreign function interface}
 
@@ -793,8 +725,7 @@ initial parameter.
 One invoked from multiple contexts---either the
 handlers for multiple named events or from both named event handlers
 and enter or exit side effects---loses this parameter under
-polymorphic unification, but causes a type error under monomorphic
-unification.
+permissive capability resolution, but causes an error under strict resolution.
 
 All other parameters are as passed in the source file.
 %
