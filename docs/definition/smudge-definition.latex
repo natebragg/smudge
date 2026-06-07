@@ -268,12 +268,12 @@ to be $\tau_1 \times \tau_2$.
     \inference[Function]
     {% Look up the name of the variable
      \tau = \Gamma(x)}
-    {C,\mathcal{S},\Gamma \vdash \textsc{function}(x) : \tau}
+    {\top,\mathcal{S},\Gamma \vdash \textsc{function}(x) : \tau}
     \\\\
     \inference[Label]
     {% Look up the name of the variable
      \tau = \Gamma(x)}
-    {C,\mathcal{S},\Gamma \vdash \textsc{label}(x) : \tau}
+    {\top,\mathcal{S},\Gamma \vdash \textsc{label}(x) : \tau}
   \end{array}\]
   \caption{\label{fig:inference} Type inference}
 \end{figure}
