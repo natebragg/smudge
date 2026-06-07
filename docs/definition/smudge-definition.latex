@@ -247,7 +247,7 @@ to be $\tau_1 \times \tau_2$.
     \\\\
     \inference[Effect]
     {% Recurse to type the effect function
-     C_{\check{\delta}},\Gamma \vdash e_{\check{\delta}} : \tau_{\check{\delta}} &
+     C_{\check{\delta}},\mathcal{S},\Gamma \vdash e_{\check{\delta}} : \tau_{\check{\delta}} &
      % Recurse to type the effect arguments
      C_1,\mathcal{S},\Gamma \vdash e_1 : \tau_1 \quad \ldots \quad C_n,\mathcal{S},\Gamma \vdash e_n : \tau_n \\
      % make a tyvar for the effect and for each effect arguments
