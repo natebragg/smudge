@@ -450,9 +450,8 @@ Both look up the type for the name in the type environment and return it.
     \\\\
     \inference[EqualRange]
     {\Gamma_y\equiv\{ y_1 \mapsto \tau_{y_1}, \ldots, y_n \mapsto \tau_{y_n} \} \\
-     m = n &
-     \theta (\tau_{x_1} \sim \tau_{y_1} \land \ldots \land \tau_{x_m} \sim \tau_{y_n})\issatisfied}
-    {\theta(\tau_{x_1} \times \ldots \times \tau_{x_m}\sim \texttt{range } \Pi\ \Gamma_y)\issatisfied}
+     \theta (\tau_x \sim \tau_{y_1} \times \ldots \times \tau_{y_n})\issatisfied}
+    {\theta(\tau_x \sim \texttt{range } \Pi\ \Gamma_y)\issatisfied}
   \end{array}\]
   \caption{\label{fig:unification} Constraint unification for non-ACUI constraints}
 \end{figure}
@@ -505,14 +504,13 @@ the same field names in a different order are \emph{not} the same type.
 To derive the substitution $\theta$, it runs unification on the conjunction of
 the equality of the fields' types.
 
-Finally, the EqualRange rule is a twist on EqualRecord---this time, we need only
-break apart $\Gamma_y$.
+Finally, the EqualRange rule translates between records and products.
 %
-As we are comparing it to a product type, we can ignore the field names, and
-just unify the conjunction over the types.
+We need only break apart $\Gamma_y$, ignore the field names, and
+just unify the product of the types.
 %
-It is important to note here that this constraint is harder to solve, as it only
-accepts a product and a record; as such, these constraints have to be deferred
+It is important to note here that this constraint is harder to solve, as it
+requires a concrete record; as such, these constraints have to be deferred
 until the end of unification to guarantee that they can be solved.
 
 \begin{figure}
