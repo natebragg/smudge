@@ -52,6 +52,7 @@ library
                      Language.Smudge.Semantics.Model
                      Language.Smudge.Semantics.Operation
                      Language.Smudge.Semantics.Solver
+                     Language.Smudge.Semantics.Ty
                      System.Console.GetOpt.Extra
   other-modules:     System.FilePath.Extra
                      Language.C89.Grammar
@@ -66,6 +67,7 @@ library
                      graphviz,
                      monoidal-containers,
                      mtl,
+                     ordered-containers,
                      parsec,
                      pretty,
                      semigroups,
@@ -83,6 +85,7 @@ executable smudge
                      containers,
                      fgl,
                      filepath,
+                     mtl,
                      parsec,
                      smudge,
                      transformers
