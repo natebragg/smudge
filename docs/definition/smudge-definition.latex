@@ -8,6 +8,7 @@
 \usepackage{syntax}
 \usepackage{stmaryrd}
 \usepackage{verbatimbox}
+\usepackage{xspace} \xspaceaddexceptions{]\}}
 
 \newcommand{\dom}{\operatorname{dom}}
 \newcommand{\instantiates}{\operatorname{<:}}
@@ -18,6 +19,7 @@
 \newcommand{\denotes}[1]{\ensuremath{\llbracket}#1\ensuremath{\rrbracket}}
 
 \newcommand{\void}{\texttt{void}}
+\newcommand{\unitty}{\ensuremath{\mathbf{1}}\xspace}
 
 \newcommand{\tuple}[1]{\left\langle #1 \right\rangle}
 
@@ -137,7 +139,7 @@ shown in Figure~\ref{fig:types}.
   \begin{grammar}
     <$\Gamma$,$\mathcal{S}$,$\theta$> ::= $\varnothing$ | $\gamma$ | \{ <x> $\mapsto \tau$, \ldots, <x> $\mapsto \tau$ \} | $\Gamma \circ \Gamma$
 
-    <$\tau$> ::= $\alpha$ | "machine" <x> | $\phi$ | $\tau \rightarrow \tau$ | $\tau \times \tau$ | $\Pi\ \Gamma$ | $\Sigma\ \Gamma$
+    <$\tau$> ::= $\alpha$ | "machine" <x> | \unitty | $\phi$ | $\tau \rightarrow \tau$ | $\tau \times \tau$ | $\Pi\ \Gamma$ | $\Sigma\ \Gamma$
 
     <$\phi$> ::= $\varnothing$ | $\psi$ | $\phi$, "eventful" <x>
 
@@ -155,6 +157,7 @@ or constructed by concatenating two environments via $\Gamma_1 \circ \Gamma_2$.
 A type can either be
 a tyvar $\alpha$,
 some named \syntax{"machine" $x$},
+the unit type \unitty,
 a capability $\phi$,
 a function $\tau_p \rightarrow \tau_r$,
 a tuple (or product) $\tau_1 \times \tau_2$,
@@ -251,9 +254,9 @@ to be $\tau_1 \times \tau_2$.
      % Recurse to type the effect arguments
      C_1,\mathcal{S},\Gamma \vdash e_1 : \tau_1 \quad \ldots \quad C_n,\mathcal{S},\Gamma \vdash e_n : \tau_n \\
      % make a tyvar for the effect and for each effect arguments
-     \alpha_1,\ldots,\alpha_n,\psi_1,\ldots,\psi_n,\psi \arefresh \\
+     \psi_1,\ldots,\psi_n,\psi \arefresh \\
      % Expose the returns of all effect arguments, and ensure that the capabilities are large enough to handle the effect's capabilities
-     C_\phi\equiv \tau_1 \sim \alpha_1 \rightarrow \psi_1, \texttt{eventful } x \land \ldots \land \tau_n \sim \alpha_n \rightarrow \psi_n, \texttt{eventful } x \\
+     C_\phi\equiv \tau_1 \sim \unitty \rightarrow \psi_1, \texttt{eventful } x \land \ldots \land \tau_n \sim \unitty \rightarrow \psi_n, \texttt{eventful } x \\
      % Constrain the function to be a function of arity n of the corresponding type and effect, then combine all constraint clauses
      C\equiv \tau_{\check{\delta}} \sim \tau_1 \times \ldots \times \tau_n \rightarrow \psi, \texttt{eventful } x \land C_\phi \land C_{\check{\delta}} \land \bigwedge_{i=1}^n C_i}
     {C,\mathcal{S},\Gamma \vdashctx{x} \textsc{effect}(e_{\check{\delta}},\tuple{e_1,\ldots,e_n}) : \psi, \texttt{eventful } x}
@@ -370,12 +373,12 @@ $e_{\check{\delta}}$ and the argument expressions $e_i$ (we call these
 ''expressions'' for lack of a better term---in truth, they currently just range
 over names of events, foreign functions, and handler field labels).
 %
-We now require a number of fresh variables: two for each argument expression,
-$\alpha_i$ and $\psi_i$, and one for the function's overall capability, $\psi$.
+We now require a number of fresh capability variables: one for each argument
+expression, $\psi_i$, and one for the function's overall capability, $\psi$.
 %
 The rule uses these to construct the constraint conjunction $C_\phi$, consisting
-of constraining, for each $i$ in the arguments, $\tau_i$ to the function
-$\alpha_i \rightarrow \psi_i, \texttt{eventful } x$, which uses the slack
+of constraining, for each $i$ in the arguments, $\tau_i$ to the function type
+$\unitty \rightarrow \psi_i, \texttt{eventful } x$, which uses the slack
 variable $\psi_i$ to absorb capabilities other than the current event $x$.
 %
 With the help of the capability var $\psi$, it then constrains the function
@@ -668,9 +671,9 @@ The permissive resolution strategy, invoked via the
 rule:
 
 \begin{align*}
-  \denotes{\varnothing} &= \void \\
+  \denotes{\varnothing} &= \unitty \\
   \denotes{\{\texttt{eventful }x \}} &= \texttt{eventful }x \\
-  \denotes{\{\texttt{eventful }x, \texttt{eventful }y, \ldots \}} &= \void
+  \denotes{\{\texttt{eventful }x, \texttt{eventful }y, \ldots \}} &= \unitty
 \end{align*}
 
 The passthrough resolution strategy, invoked explicitly by supplying the
