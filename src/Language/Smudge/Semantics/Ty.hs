@@ -8,9 +8,9 @@
 
 module Language.Smudge.Semantics.Ty (
   Ty(..),
-  SymbolTable,
---  insertFunctions,
+  SymbolTable(..),
   elaborate,
+  Resolution(..),
 ) where
 
 import Language.Smudge.Grammar (
@@ -142,8 +142,8 @@ freshEnvar = freshVar "g"
 freshCapvar :: (Num i, Show i, MonadState i m) => m String
 freshCapvar = freshVar "p"
 
-elaborate :: SymbolTable -> [(StateMachine TaggedName, [(WholeState TaggedName)])] -> Except TypeError SymbolTable
-elaborate (SymbolTable gamma) ms =
+elaborate :: Resolution -> SymbolTable -> [(StateMachine TaggedName, [(WholeState TaggedName)])] -> Except TypeError SymbolTable
+elaborate res (SymbolTable gamma) ms =
     flip evalStateT 0 $
         do let sig = Map.empty
                fs = concat $ map foreignFns ms
@@ -154,7 +154,7 @@ elaborate (SymbolTable gamma) ms =
            gamma' <- lift $ close $ subst theta gamma'
            tau    <- lift $ close $ subst theta tau
            let (Record gamma_tau) = tau
-           return $ SymbolTable $ disjUnion gamma' gamma_tau
+           SymbolTable <$> lift (resolve res $ disjUnion gamma' gamma_tau)
 
 class Infer x where
     infer :: (Num i, Show i, MonadState i m) => Env -> Env -> x -> m (Constraint, Ty)
@@ -343,3 +343,24 @@ instance Close Ty where
 
 instance (Traversable t, Close v) => Close (t v) where
     close = traverse close
+
+data Resolution = Strict | Permissive | Passthrough
+    deriving (Eq)
+
+class Resolve a where
+    resolve :: Resolution -> a -> Except TypeError a
+
+instance Resolve Ty where
+    resolve Passthrough tau       = return $ tau
+    resolve r tau@(Tyvar _)       = return $ tau
+    resolve r tau@(Ty _)          = return $ tau
+    resolve r tau@(Cap _ cs) | length cs <= 1 = return $ tau
+    resolve Strict     (Cap _ cs) = throwError $ "Could not strictly resolve function used in multiple contexts:\n    " ++ show cs ++ "\n"
+    resolve Permissive (Cap p  _) = return $ Cap p Set.empty
+    resolve r (tau1 :-> tau2)     = (:->) <$> resolve r tau1 <*> resolve r tau2
+    resolve r (Product taus)      = Product <$> resolve r taus
+    resolve r (Record gamma)      = Record <$> resolve r gamma
+    resolve r (Variant _ gamma)   = Variant Nothing <$> resolve r gamma
+
+instance (Traversable t, Resolve v) => Resolve (t v) where
+    resolve = traverse . resolve
