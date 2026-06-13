@@ -43,7 +43,7 @@ type Envar = String
 
 type Capvar = String
 
-data Ty = Tyvar String
+data Ty = Tyvar (Maybe Ty) String
         | Ty TaggedName
         | Cap (Maybe Capvar) (Set TaggedName)
         | Ty :-> Ty
@@ -58,7 +58,7 @@ prettyField :: (TaggedName, Ty) -> String
 prettyField (x, tau) = show x ++ ": " ++ pretty tau
 
 pretty :: Ty -> String
-pretty (Tyvar x) = x
+pretty (Tyvar tau x) = x ++ case tau of Nothing -> ""; Just tau -> "^(" ++ pretty tau ++ "?)"
 pretty (Ty x) = show x
 pretty (Cap Nothing xs) | null xs = "uneventful"
 pretty (Cap Nothing xs) = intercalate ", " $ map (("eventful " ++) . show) (toList xs)
@@ -147,7 +147,7 @@ elaborate res (SymbolTable gamma) ms =
     flip evalStateT 0 $
         do let sig = Map.empty
                fs = concat $ map foreignFns ms
-           g_d <- Map.fromList <$> (flip traverse fs $ \f -> (,) f <$> Tyvar <$> freshTyvar)
+           g_d <- Map.fromList <$> (flip traverse fs $ \f -> (,) f <$> Tyvar Nothing <$> freshTyvar)
            let gamma' = disjUnion gamma g_d
            (cs, tau) <- infer sig gamma' ms
            theta <- unify cs
@@ -161,7 +161,7 @@ class Infer x where
 
 instance Infer [(StateMachine TaggedName, [(WholeState TaggedName)])] where
     infer sig gamma ms =
-        do alphas <- flip traverse ms $ \_ -> Tyvar <$> freshTyvar
+        do alphas <- flip traverse ms $ \_ -> Tyvar Nothing <$> freshTyvar
            let xs = flip map ms $ \(StateMachine x, _) -> x
                sig' = Map.fromList $ zip xs alphas
                sig'' = disjUnion sig sig'
@@ -174,7 +174,7 @@ instance Infer [(StateMachine TaggedName, [(WholeState TaggedName)])] where
 
 instance Infer (StateMachine TaggedName, [(WholeState TaggedName)]) where
     infer sig gamma (_, qs) =
-        do alpha <- Tyvar <$> freshTyvar
+        do alpha <- Tyvar Nothing <$> freshTyvar
            c <- flip foldMapM qs $ \q_i -> do
                   (c_i, tau_i) <- infer sig gamma q_i
                   let Variant Nothing g_i = tau_i
@@ -230,8 +230,8 @@ instance Infer (Function TaggedName) where
         do let Just tau = Map.lookup x_m sig
            g <- freshEnvar
            psi <- freshCapvar
-           alpha_a  <- Tyvar <$> freshTyvar
-           alpha_pi <- Tyvar <$> freshTyvar
+           alpha_a  <- Tyvar (Just $ Record Map.empty) <$> freshTyvar
+           alpha_pi <- Tyvar Nothing <$> freshTyvar
            let g_a = Map.singleton (x_a, alpha_a :-> Cap Nothing Set.empty)
                c = Variant (Just g) g_a :~: tau :/\ alpha_pi `EqRange` alpha_a
                ty = alpha_pi :-> Cap (Just psi) Set.empty
@@ -267,8 +267,8 @@ unify = go
           go Trivial = return Map.empty
           go (tau1 `EqRange` Record gamma) = go (tau1 :~: Product (toList gamma))
           go (tau1 :~: tau2) | tau1 == tau2 = return Map.empty
-          go (Tyvar alpha :~: tau2) | not (freein alpha tau2) = return $ Map.singleton (alpha, tau2)
-          go (tau1 :~: tau2@(Tyvar _)) = go $ tau2 :~: tau1
+          go (Tyvar _ alpha :~: tau2) | not (freein alpha tau2) = return $ Map.singleton (alpha, tau2)
+          go (tau1 :~: tau2@(Tyvar _ _)) = go $ tau2 :~: tau1
           go (tau1 :-> tau2 :~: tau3 :-> tau4) = go $ tau1 :~: tau3 :/\ tau2 :~: tau4
           go (Product taus1 :~: Product taus2) | length taus1 == length taus2 = goPairs taus1 taus2
           go (Record gamma1 :~: Record gamma2) | keys gamma1 == keys gamma2 = goPairs (toList gamma2) (toList gamma2)
@@ -283,17 +283,17 @@ unify = go
           go (t1@(Variant Nothing _) :~: t2@(Variant (Just _) _)) = go $ t2 :~: t1
           go (Variant (Just g) gamma_x :~: Variant Nothing gamma_y) | null (gamma_x \\ gamma_y) =
               do let tau_y_no_x = Variant Nothing $ gamma_y \\ gamma_x
-                 go $ Tyvar g :~: tau_y_no_x <> mconcat (toList $ intersectionWith (const (:~:)) gamma_x gamma_y)
+                 go $ Tyvar Nothing g :~: tau_y_no_x <> mconcat (toList $ intersectionWith (const (:~:)) gamma_x gamma_y)
           go (Variant (Just g_x) gamma_x :~: Variant (Just g_y) gamma_y) | g_x == g_y = go $ Variant Nothing gamma_x :~: Variant Nothing gamma_y
           go (Variant (Just g_x) gamma_x :~: Variant (Just g_y) gamma_y) =
               do g_z <- freshEnvar
                  let tau_x_no_y = Variant (Just g_z) $ gamma_x \\ gamma_y
                      tau_y_no_x = Variant (Just g_z) $ gamma_y \\ gamma_x
-                 go $ Tyvar g_x :~: tau_y_no_x <> Tyvar g_y :~: tau_x_no_y <> mconcat (toList $ intersectionWith (const (:~:)) gamma_x gamma_y)
+                 go $ Tyvar Nothing g_x :~: tau_y_no_x <> Tyvar Nothing g_y :~: tau_x_no_y <> mconcat (toList $ intersectionWith (const (:~:)) gamma_x gamma_y)
           go (tau1 :~: tau2) = throwError $ "Cannot unify types:\n    " ++ pretty tau1 ++ "\n    " ++ pretty tau2 ++ "\n"
 
 freein :: String -> Ty -> Bool
-freein x (Tyvar y) = x == y
+freein x (Tyvar _ y) = x == y
 freein x (Cap (Just p) _) = x == p
 freein x (tau1 :-> tau2) = freein x tau1 || freein x tau2
 freein x (Product taus) = any (freein x) taus
@@ -306,7 +306,7 @@ class Subst a where
 
 instance Subst Ty where
     subst theta = go
-        where go tau@(Tyvar alpha)        = lookupDef tau alpha theta
+        where go tau@(Tyvar _ alpha)      = lookupDef tau alpha theta
               go tau@(Ty x)               = tau
               go tau@(Cap Nothing    cs)  = tau
               go tau@(Cap (Just psi) cs)  = case Map.lookup psi theta of
@@ -333,7 +333,8 @@ class Close a where
     close :: a -> Except TypeError a
 
 instance Close Ty where
-    close tau@(Tyvar _)     = throwError $ "Could not solve for " ++ pretty tau ++ "\n"
+    close (Tyvar Nothing    a) = throwError $ "Could not solve for type variable" ++ a ++ "\n"
+    close (Tyvar (Just tau) _) = return $ tau
     close tau@(Ty x)        = return $ tau
     close (Cap _ cs)        = return $ Cap Nothing cs
     close (tau1 :-> tau2)   = (:->) <$> close tau1 <*> close tau2
@@ -352,7 +353,7 @@ class Resolve a where
 
 instance Resolve Ty where
     resolve Passthrough tau       = return $ tau
-    resolve r tau@(Tyvar _)       = return $ tau
+    resolve r tau@(Tyvar _ _)     = return $ tau
     resolve r tau@(Ty _)          = return $ tau
     resolve r tau@(Cap _ cs) | length cs <= 1 = return $ tau
     resolve Strict     (Cap _ cs) = throwError $ "Could not strictly resolve function used in multiple contexts:\n    " ++ show cs ++ "\n"
