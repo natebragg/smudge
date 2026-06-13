@@ -211,34 +211,33 @@ instance Infer (EventHandler TaggedName) where
 
 instance Infer (Event TaggedName, SideEffect TaggedName) where
     infer sig gamma (a, SideEffect f args) =
-        do (c_d, tau_d) <- infer sig gamma f
+        do (c_d, tau_d) <- infer sig gamma (a, f)
            (c, taus) <- flip foldMapM args $ \e_i -> do
-                          (c_i, tau_i) <- infer sig gamma e_i
+                          (c_i, tau_i) <- infer sig gamma (a, e_i)
                           return (c_i, [tau_i])
-           -- TODO what about EventAny?
-           let cap_x = case a of Event x -> Set.singleton x; _ -> Set.empty
-           c_phi <- flip foldMapM taus $ \tau_i -> do
-                      psi_i <- freshCapvar
-                      return $ tau_i :~: Product [] :-> Cap (Just psi_i) cap_x
            psi <- freshCapvar
-           let ty = Cap (Just psi) cap_x
-               cs = tau_d :~: Product taus :-> ty <> c_phi <> c_d <> c
+           let ty = Cap (Just psi) Set.empty
+               cs = tau_d :~: Product taus :-> ty <> c_d <> c
            return (cs, ty)
 
-instance Infer (Function TaggedName) where
-    infer sig gamma (FuncEvent (StateMachine x_m, Event x_a)) =
+instance Infer (Event TaggedName, Function TaggedName) where
+    infer sig gamma (_, FuncEvent (StateMachine x_m, Event x_a)) =
         do let Just tau = Map.lookup x_m sig
            g <- freshEnvar
-           psi <- freshCapvar
            alpha_a  <- Tyvar (Just $ Record Map.empty) <$> freshTyvar
            alpha_pi <- Tyvar Nothing <$> freshTyvar
            let g_a = Map.singleton (x_a, alpha_a :-> Cap Nothing Set.empty)
                c = Variant (Just g) g_a :~: tau :/\ alpha_pi `EqRange` alpha_a
-               ty = alpha_pi :-> Cap (Just psi) Set.empty
+               ty = alpha_pi :-> Cap Nothing (Set.singleton x_a) -- x_a here is a hack around the current code gen
            return (c, ty)
-    infer sig gamma (FuncVoid f) =
-        do let Just tau = Map.lookup f gamma
-           return (Trivial, tau)
+    infer sig gamma (a, FuncVoid f) =
+        do alpha  <- Tyvar (Just $ Product []) <$> freshTyvar
+           psi <- freshCapvar
+           let Just tau = Map.lookup f gamma
+               -- TODO what about EventAny? This leads to first.smudge inferring the wrong type for @sideEffect
+               cap_x = case a of Event x -> Set.singleton x; _ -> Set.empty
+               c = tau :~: alpha :-> Cap (Just psi) cap_x
+           return (c, tau)
 
 type Substitution = OMap String Ty
 
