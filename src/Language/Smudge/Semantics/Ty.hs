@@ -247,6 +247,11 @@ unify = go
           partRange c@(_ `EqRange` Record _) = (c, Trivial)
           partRange c@(_ `EqRange` _) = (Trivial, c)
           partRange c = (c, Trivial)
+          defRange :: Constraint -> StateT Int (Except TypeError) Constraint
+          defRange (c1 :/\ c2) = (:/\) <$> defRange c1 <*> defRange c2
+          defRange (tau1 `EqRange` Tyvar (Just tau2) _) = return $ tau1 `EqRange` tau2
+          defRange (_ `EqRange` _) = throwError $ "Found unsatisfiable range constraints.\n"
+          defRange _ = error "Unexpected constraint.  This is a bug in smudge.\n"
           catEnv theta = disjUnion theta . subst theta
           goPairs :: [Ty] -> [Ty] -> StateT Int (Except TypeError) Substitution
           goPairs ts1 ts2 = go $ mconcat $ zipWith (:~:) ts1 ts2
@@ -255,14 +260,12 @@ unify = go
                  theta_2 <- go' $ subst theta_1 c2
                  return $ catEnv theta_2 theta_1
           go' c = go c
-          go c@(c1 :/\ c2) =
-              do let (c', r) = partRange c
-                 when (isTrivial c') $
-                     throwError $ "Found unsatisfiable range constraints.\n" ++
-                                  "This is almost certainly due to sending an event that was never declared."
-                 theta_1 <- go' c'
-                 theta_2 <- go $ subst theta_1 r
-                 return $ catEnv theta_2 theta_1
+          go c@(_ :/\ _) =
+               case partRange c of
+                   (Trivial, r) -> defRange r >>= go'
+                   (c', r) -> do theta_1 <- go' c'
+                                 theta_2 <- go $ subst theta_1 r
+                                 return $ catEnv theta_2 theta_1
           go Trivial = return Map.empty
           go (tau1 `EqRange` Record gamma) = go (tau1 :~: Product (toList gamma))
           go (tau1 :~: tau2) | tau1 == tau2 = return Map.empty
