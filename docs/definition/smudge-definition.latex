@@ -139,7 +139,7 @@ shown in Figure~\ref{fig:types}.
   \begin{grammar}
     <$\Gamma$,$\mathcal{S}$,$\theta$> ::= $\varnothing$ | $\gamma$ | \{ <x> $\mapsto \tau$, \ldots, <x> $\mapsto \tau$ \} | $\Gamma \circ \Gamma$
 
-    <$\tau$> ::= $\alpha$ | "machine" <x> | \unitty | $\phi$ | $\tau \rightarrow \tau$ | $\tau \times \tau$ | $\Pi\ \Gamma$ | $\Sigma\ \Gamma$
+    <$\tau$> ::= $\alpha^{\tau?}$ | "machine" <x> | \unitty | $\phi$ | $\tau \rightarrow \tau$ | $\tau \times \tau$ | $\Pi\ \Gamma$ | $\Sigma\ \Gamma$
 
     <$\phi$> ::= $\varnothing$ | $\psi$ | $\phi$, "eventful" <x>
 
@@ -155,7 +155,7 @@ some sequence of bindings of a name $x_i$ to type $\tau_i$,
 or constructed by concatenating two environments via $\Gamma_1 \circ \Gamma_2$.
 
 A type can either be
-a tyvar $\alpha$,
+a tyvar $\alpha$ (with optional fallback denoted by superscipt $\tau?$),
 some named \syntax{"machine" $x$},
 the unit type \unitty,
 a capability $\phi$,
@@ -250,33 +250,34 @@ to be $\tau_1 \times \tau_2$.
     \\\\
     \inference[Effect]
     {% Recurse to type the effect function
-     C_{\check{\delta}},\mathcal{S},\Gamma \vdash e_{\check{\delta}} : \tau_{\check{\delta}} &
+     C_{\check{\delta}},\mathcal{S},\Gamma \vdashctx{x} e_{\check{\delta}} : \tau_{\check{\delta}} &
      % Recurse to type the effect arguments
-     C_1,\mathcal{S},\Gamma \vdash e_1 : \tau_1 \quad \ldots \quad C_n,\mathcal{S},\Gamma \vdash e_n : \tau_n \\
-     % make a tyvar for the effect and for each effect arguments
-     \psi_1,\ldots,\psi_n,\psi \arefresh \\
-     % Expose the returns of all effect arguments, and ensure that the capabilities are large enough to handle the effect's capabilities
-     C_\phi\equiv \tau_1 \sim \unitty \rightarrow \psi_1, \texttt{eventful } x \land \ldots \land \tau_n \sim \unitty \rightarrow \psi_n, \texttt{eventful } x \\
+     C_1,\mathcal{S},\Gamma \vdashctx{x} e_1 : \tau_1 \quad \ldots \quad C_n,\mathcal{S},\Gamma \vdashctx{x} e_n : \tau_n \\
      % Constrain the function to be a function of arity n of the corresponding type and effect, then combine all constraint clauses
-     C\equiv \tau_{\check{\delta}} \sim \tau_1 \times \ldots \times \tau_n \rightarrow \psi, \texttt{eventful } x \land C_\phi \land C_{\check{\delta}} \land \bigwedge_{i=1}^n C_i}
-    {C,\mathcal{S},\Gamma \vdashctx{x} \textsc{effect}(e_{\check{\delta}},\tuple{e_1,\ldots,e_n}) : \psi, \texttt{eventful } x}
+     C\equiv \tau_{\check{\delta}} \sim \tau_1 \times \ldots \times \tau_n \rightarrow \psi \land C_{\check{\delta}} \land \bigwedge_{i=1}^n C_i &
+     % make a tyvar for the effect
+     \psi \isfresh}
+    {C,\mathcal{S},\Gamma \vdashctx{x} \textsc{effect}(e_{\check{\delta}},\tuple{e_1,\ldots,e_n}) : \psi}
     \\\\
     \inference[SendEvent]
     {% Look up the machine's signature, and create three fresh tyvars
-     \tau = \mathcal{S}(x_m) & \gamma,\psi,\alpha_a,\alpha_\pi \arefresh \\
+     \tau = \mathcal{S}(x_m) & \gamma,\alpha_a^{\Pi\varnothing?},\alpha_\pi \arefresh \\
      % Constrain the signature to include a field of this name with a function type, constrain the argument to be a record, and break out the range of that record
      C\equiv \Sigma\ \{ x_a \mapsto \alpha_a \rightarrow \varnothing \} \circ \gamma \sim \tau \land \alpha_\pi \sim \texttt{range } \alpha_a}
-    {C,\mathcal{S},\Gamma \vdash \textsc{sendevent}(x_m, x_a) : \alpha_\pi \rightarrow \psi}
+    {C,\mathcal{S},\Gamma \vdashctx{x} \textsc{sendevent}(x_m, x_a) : \alpha_\pi \rightarrow \texttt{eventful } x_a}
     \\\\
     \inference[Function]
     {% Look up the name of the variable
-     \tau = \Gamma(x)}
-    {\top,\mathcal{S},\Gamma \vdash \textsc{function}(x) : \tau}
+     \tau = \Gamma(x) &
+     % make tyvars to break apart the type
+     \psi,\alpha^{\unitty?} \arefresh \\
+     C\equiv \tau \sim \alpha \rightarrow \psi,\texttt{eventful } x}
+    {C,\mathcal{S},\Gamma \vdashctx{x} \textsc{function}(x) : \tau}
     \\\\
     \inference[Label]
     {% Look up the name of the variable
      \tau = \Gamma(x)}
-    {\top,\mathcal{S},\Gamma \vdash \textsc{label}(x) : \tau}
+    {\top,\mathcal{S},\Gamma \vdashctx{x} \textsc{label}(x) : \tau}
   \end{array}\]
   \caption{\label{fig:inference} Type inference}
 \end{figure}
@@ -370,32 +371,23 @@ We address that in the SendEvent rule.
 
 The Effect rule recurses to type both the function expression
 $e_{\check{\delta}}$ and the argument expressions $e_i$ (we call these
-''expressions'' for lack of a better term---in truth, they currently just range
+``expressions'' for lack of a better term---in truth, they currently just range
 over names of events, foreign functions, and handler field labels).
 %
-We now require a number of fresh capability variables: one for each argument
-expression, $\psi_i$, and one for the function's overall capability, $\psi$.
+This recursion propagates $x$ to each subexpression, leaving it up to those
+rules to decide how to use it.
 %
-The rule uses these to construct the constraint conjunction $C_\phi$, consisting
-of constraining, for each $i$ in the arguments, $\tau_i$ to the function type
-$\unitty \rightarrow \psi_i, \texttt{eventful } x$, which uses the slack
-variable $\psi_i$ to absorb capabilities other than the current event $x$.
-%
-With the help of the capability var $\psi$, it then constrains the function
+The rule constructs the constraint conjunction $C$ by constraining the function
 type $\tau_{\check{\delta}}$ to be of arity $n$ of the corresponding argument
-types, then combines this with all other constraint clauses.
+types with a fresh capability variable $\psi$, then combining this with all
+other constraint clauses.
 %
-As each side effect represents a complete application, the returned type is the
-capability var $\phi$, with the addition of the capability \syntax{"eventful" $x$}.
-%
-Practically speaking, this means that in the generated code, the active event
-will both be passed into the side effect and requested by its arguments.
+The returned type is the capability $\psi$.
 
 When the expression in question is a fully qualified event, the SendEvent rule
 looks up the signature $\tau$ of the machine $x_m$ in $\mathcal{S}$, and creates
-the fresh slack envar $\gamma$, capability var $\psi$, and fresh tyvars
-$\alpha_a$ for the event record and $\alpha_\pi$ for the label-erased tuple
-type.
+the fresh slack envar $\gamma$, and fresh tyvars $\alpha_a$ for the event
+record and $\alpha_\pi$ for the label-erased tuple type.
 %
 To type correctly, the rule performs a few tricks.
 %
@@ -405,15 +397,26 @@ $x_a$ of function type, forcing $\gamma$ to absorb the remaining bindings.
 Second, it adds a constraint that erases the labels for that record type, taking
 only the range as the product type $\alpha_\pi$.
 %
-During code generation, the external API provides only the version that accepts
-a complete record; the tuple version is only available internally.
+During code generation, the external API provides only the version with
+\syntax{"eventful" $x_a$} capability; the tuple version is only available
+internally.
 %
-With the help of these tricks, the returned type is now compatible with the
-constraint from the Effect rule.
+We provide $\alpha_a$ the default type of the empty record to facilitate typing
+events that are sent but never explicitly handled.
+%
+Note that the current event $x$ is ignored, and is not within the function's
+capabilities.
 
-Finally, the Function and Label rules are straightforward.
+The Function rule looks up and returns the type $\tau$ for the name in the type
+environment.
 %
-Both look up the type for the name in the type environment and return it.
+It constrains $\tau$ to be a function with at least the capability
+\syntax{"eventful" $x$}, the remaining being absorbed by the slack capability
+variable $\psi$, and arguments matched to the fresh tyvar $\alpha$ that default
+to the unit type \unitty.
+
+Finally, the Label rule is actually a work in progress, so for now it does the
+minimum of just ignoring effects and returning the given type.
 
 \subsection*{Unification}
 
@@ -647,6 +650,26 @@ This time, after unpacking the intersection and symmetric differences of
 $\Gamma_x$ and $\Gamma_y$ and checking that $\gamma_x\neq\gamma_y$, we have to
 unify $\gamma_x$ with $\Gamma_{y/x}$ composed with a fresh envar $\gamma_z$,
 vice versa for $\gamma_y$, then unify the intersection.
+
+\subsection*{Default Solver Variable Assignments}
+
+At the end of unification, it's possible that some variables remain that did not
+receive an assignment in the substitution.
+%
+In the case of capability and environment variables, the resolution is simple:
+both can be closed by substituting $\varnothing$.
+%
+In the case of tyvars, recall that some of these were given default types when
+allocated---these can all be substituted without issue.
+
+There is one last step, which happens when some deferred EqualRange constraints
+were not able to be solved.
+%
+Substituting default types will now make these solvable, which may in turn
+produce further variable assignments.
+%
+The existence of any unassigned tyvars after this step causes unification to
+fail.
 
 \subsection*{Capability Resolution}
 
