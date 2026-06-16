@@ -16,6 +16,7 @@ import PackageInfo (version, buildCommit, appName, author, synopsis)
 import Language.Smudge.Backends.Backend (options)
 import Language.Smudge.Backends.GraphViz (GraphVizOption(..))
 import Language.Smudge.Backends.CStatic (CStaticOption(..))
+import Language.Smudge.Semantics.Ty (Resolution(..))
 
 import Data.List (intercalate)
 import System.Exit (exitSuccess, exitFailure)
@@ -25,7 +26,7 @@ data SystemOption = Version
                   | OutDir FilePath
     deriving (Show, Eq)
 
-data EnvmntOption = Strict Bool
+data EnvmntOption = CapRes (Either String Resolution)
                   | Namespace String
                   | NsPrefix Bool
                   | Rename String
@@ -49,10 +50,15 @@ sysopts = [Option ['v'] ["version"] (NoArg Version) "Version information.",
            Option []    ["outdir"] (ReqArg OutDir "DIR") "Output directory."]
 
 envopts :: [OptDescr EnvmntOption]
-envopts = [Option []    ["[no-]strict"] (BoolArg Strict) "[DON'T] Require all types to match strictly",
+envopts = [Option []    ["strict"] (NoArg (CapRes $ Right Strict)) "(DEPRECATED) Require all capabilities to match strictly (same as --cap-res=strict)",
+           Option []    ["cap-res"]   (ReqArg readRes "strict|permissive|passthrough") "Capability resolution strategy.",
            Option []    ["namespace"] (ReqArg Namespace "NEW") "Replace namespace.",
            Option []    ["[no-]nsprefix"] (BoolArg NsPrefix) "[DON'T] Prefix all identifiers with namespace.",
            Option []    ["rename"] (ReqArg Rename "\"OLD NEW\"") "Replace identifier."]
+    where readRes "strict"      = CapRes $ Right Strict
+          readRes "permissive"  = CapRes $ Right Permissive
+          readRes "passthrough" = CapRes $ Right Passthrough
+          readRes s = CapRes $ Left $ "Invalid capability resolution strategy: \"" ++ s ++ "\""
 
 cmnopts :: [OptDescr CommonOption]
 cmnopts = [Option []    ["[no-]logevent"] (BoolOptArg LogEvent "EVENT") "[DON'T] Enable event tracing where EVENT is a fully qualified <state-machine>.<event> name.",

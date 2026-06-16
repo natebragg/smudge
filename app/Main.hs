@@ -48,6 +48,9 @@ import Language.Smudge.Semantics.Solver (
   elaborateMono,
   elaboratePoly,
   )
+import Language.Smudge.Semantics.Ty (
+  Resolution(Strict, Permissive, Passthrough),
+  )
 import qualified Language.Smudge.Parser.Smudge as Parser (smudge_file)
 import qualified Language.Smudge.Lexer.Smudge as Lexer (smudge_file)
 import Language.Smudge.Lexer.Token (stripWhitespace)
@@ -112,13 +115,15 @@ processFile fileName os = do
 
 checkAndConvert :: [(StateMachine Identifier, [WholeState Identifier])] -> [Options] -> IO ([(StateMachine TaggedName, Gr EnterExitState Happening)], Alias QualifiedName, SymbolTable)
 checkAndConvert sms os = do
-    let rename_errors = lefts renames
-    mapM (putStrLn . ("Parse error in rename flag: " ++)) rename_errors
-    when (not $ null rename_errors) $ report_failure $ length rename_errors
+    mapM (putStrLn . (\(f, err) -> "Parse error in " ++ f ++ " flag: " ++ err)) flag_errors
+    when (not $ null flag_errors) $ report_failure $ length flag_errors
     m sms
     where
+        flag_errors = (map ((,) "rename") $ lefts renames) ++
+                      [("cap-res", err) | EnvmntOption (CapRes (Left err)) <- os]
         renames = map rename [r | EnvmntOption (Rename r) <- os]
         namespace = last $ "SMUDGE" : [n | EnvmntOption (Namespace n) <- os]
+        capRes = last $ Permissive : [r | EnvmntOption (CapRes (Right r)) <- os]
         aliases = merge (basisAlias namespace) $ fromList $ rights renames
         nsprefix = if EnvmntOption (NsPrefix True) `elem` os && not (null namespace)
                    then qualify . (,) namespace else id
@@ -137,7 +142,7 @@ checkAndConvert sms os = do
             when (any fatal fs) $ report_failure $ length fs
 
             let basis = bindBasis aliases $ map fst sms''
-            let st = if elem (EnvmntOption (Strict True)) os
+            let st = if capRes == Strict
                      then elaborateMono basis sms'''
                      else elaboratePoly basis sms'''
             -- This is a bit of a hack around the definition of Passable

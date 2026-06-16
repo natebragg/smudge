@@ -340,16 +340,16 @@ instance (Traversable t, Close v) => Close (t v) where
     close = traverse close
 
 data Resolution = Strict | Permissive | Passthrough
-    deriving (Eq)
+    deriving (Show, Eq)
 
 class Resolve a where
     resolve :: Resolution -> a -> Except TypeError a
 
 instance Resolve Ty where
-    resolve Passthrough tau       = return $ tau
-    resolve r tau@(Tyvar _ _)     = return $ tau
-    resolve r tau@(Ty _)          = return $ tau
-    resolve r tau@(Cap _ cs) | length cs <= 1 = return $ tau
+    resolve Passthrough tau       = return tau
+    resolve r tau@(Tyvar _ _)     = return tau
+    resolve r tau@(Ty _)          = return tau
+    resolve r tau@(Cap _ cs) | length cs <= 1 = return tau
     resolve Strict     (Cap _ cs) = throwError $ "Could not strictly resolve function used in multiple contexts:\n    " ++ show cs ++ "\n"
     resolve Permissive (Cap p  _) = return $ Cap p Set.empty
     resolve r (tau1 :-> tau2)     = (:->) <$> resolve r tau1 <*> resolve r tau2
