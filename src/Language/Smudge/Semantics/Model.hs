@@ -19,6 +19,7 @@ module Language.Smudge.Semantics.Model (
     mangleWith,
     disqualify,
     disqualifyTag,
+    machineOf,
     events_for,
     states_for,
     TaggedName,
@@ -117,6 +118,9 @@ mangleWith ff f = extractWith ff (mangle f)
 disqualify :: QualifiedName -> Name
 disqualify = mangleWith seq id
 
+qualifier :: QualifiedName -> Identifier
+qualifier = extractWith const id
+
 data Tagged a =
           TagMachine a
         | TagState a
@@ -164,6 +168,12 @@ instance Qualifiable a => Qualifiable (Tagged a) where
 
 disqualifyTag :: TaggedName -> Name
 disqualifyTag = disqualify . qualify
+
+machineOf :: TaggedName -> Maybe TaggedName
+machineOf n@(TagMachine _) = Just n
+machineOf (TagState n) = Just $ TagMachine $ qualify $ qualifier n
+machineOf (TagEvent n) = Just $ TagMachine $ qualify $ qualifier n
+machineOf _ = Nothing
 
 events_for :: Gr EnterExitState Happening -> [Event TaggedName]
 events_for g = nub $ sort [e | (_, _, Happening {event=e@(Event _)}) <- labEdges g]
