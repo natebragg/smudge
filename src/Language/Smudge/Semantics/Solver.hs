@@ -65,11 +65,13 @@ data Ty =
     deriving (Eq, Ord)
 
 instance Show Ty where
-    show Void = "void"
-    show (Ty n) = show $ qualify n
-    show (tau :-> tau') = show tau ++ " -> " ++ show tau'
-    show (Tyvar n) = n
-    show (Tyset tys) = "{" ++ intercalate ", " (map show (elems tys)) ++ "}"
+    show = go False
+        where go _ Void = "void"
+              go _ (Ty n) = show $ qualify n
+              go True (tau :-> tau') = "(" ++ go True tau ++ " -> " ++ show tau' ++ ")"
+              go False (tau :-> tau') = go True tau ++ " -> " ++ show tau'
+              go _ (Tyvar n) = n
+              go _ (Tyset tys) = "{" ++ intercalate ", " (map show (elems tys)) ++ "}"
 
 infixr 7 :->
 
