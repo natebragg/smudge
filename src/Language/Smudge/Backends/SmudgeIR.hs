@@ -263,7 +263,7 @@ mangleEv :: Event TaggedName -> QualifiedName
 mangleEv (Event evName) = extractWith seq qualify $ qualify evName
 mangleEv EventEnter = qualify "enter"
 mangleEv EventExit = qualify "exit"
-mangleEv EventAny = qualify "any"
+mangleEv (EventAny _) = qualify "any"
 
 boundArgs :: Def a -> Def a
 boundArgs d@(DataDef _) = d

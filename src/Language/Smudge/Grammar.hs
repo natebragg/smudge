@@ -33,12 +33,12 @@ instance Functor State where
     fmap _ StateSame  = StateSame
     fmap _ StateEntry = StateEntry
 
-data Event a = Event a | EventAny | EventEnter | EventExit
+data Event a = Event a | EventAny a | EventEnter | EventExit
     deriving (Show, Eq, Ord)
 
 instance Functor Event where
     fmap f (Event a)  = Event (f a)
-    fmap _ EventAny   = EventAny
+    fmap f (EventAny a) = EventAny (f a)
     fmap _ EventEnter = EventEnter
     fmap _ EventExit  = EventExit
 

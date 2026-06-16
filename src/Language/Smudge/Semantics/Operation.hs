@@ -75,8 +75,8 @@ handlers e g = allHandlers g ! e
 allHandlers :: Graph gr => gr EnterExitState Happening -> Map (Event TaggedName) (Map (State TaggedName) (Maybe (State TaggedName, Event TaggedName)))
 allHandlers g = fromList $
     do  e <- nub $ map (event . thrd) events
-        let all_evt_handlers = all_handlers e
-        let all_any_handlers = all_handlers EventAny
+        let all_evt_handlers = all_handlers (== e)
+        let all_any_handlers = all_handlers (\e -> case e of (EventAny _) -> True; _ -> False)
         let named_named = [h | h@(State _, _) <- all_evt_handlers]
         let any_named = [h | h@(StateAny, _) <- all_evt_handlers]
         let named_any = [h | h@(State _, _) <- all_any_handlers]
@@ -90,10 +90,11 @@ allHandlers g = fromList $
         thrd (_, _, t) = t
         states = labNodes g
         events = labEdges g
-        all_handlers e =
+        all_handlers pred =
             do  (n, ees) <- states
                 (_, _, h) <- out g n
-                guard $ event h == e
+                let e = event h
+                guard $ pred e
                 return (st ees, e)
 
 finalStates :: Graph gr => gr EnterExitState Happening -> [Node]

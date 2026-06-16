@@ -181,7 +181,8 @@ passConvertAnys = map $ fmap $ map conv_ws
     where conv_ws (st, fs, en, es, ex) = (conv_st st, fs, en, map conv_eh es, ex)
           conv_eh (ev, ses, s) = (conv_ev ev, ses, s)
           conv_st st = if (\case State s -> rawtest (== "_") s; _ -> False) st then StateAny else st
-          conv_ev ev = if (\case Event e -> rawtest (== "_") e; _ -> False) ev then EventAny else ev
+          conv_ev (Event e) | rawtest (== "_") e = EventAny e
+          conv_ev ev = ev
 
 pickSm :: StateMachine a -> StateMachine a -> StateMachine a
 pickSm _ s@(StateMachine _) = s
