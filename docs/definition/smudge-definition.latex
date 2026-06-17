@@ -268,16 +268,16 @@ to be $\tau_1 \times \tau_2$.
     \\\\
     \inference[Function]
     {% Look up the name of the variable
-     \tau = \Gamma(x) &
+     \tau = \Gamma(y) &
      % make tyvars to break apart the type
      \psi,\alpha^{\unitty?} \arefresh \\
      C\equiv \tau \sim \alpha \rightarrow \psi,\texttt{eventful } x}
-    {C,\mathcal{S},\Gamma \vdashctx{x} \textsc{function}(x) : \tau}
+    {C,\mathcal{S},\Gamma \vdashctx{x} \textsc{function}(y) : \tau}
     \\\\
     \inference[Label]
     {% Look up the name of the variable
-     \tau = \Gamma(x)}
-    {\top,\mathcal{S},\Gamma \vdashctx{x} \textsc{label}(x) : \tau}
+     \tau = \Gamma(y)}
+    {\top,\mathcal{S},\Gamma \vdashctx{x} \textsc{label}(y) : \tau}
   \end{array}\]
   \caption{\label{fig:inference} Type inference}
 \end{figure}
