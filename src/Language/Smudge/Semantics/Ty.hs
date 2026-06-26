@@ -7,6 +7,7 @@
 {-# LANGUAGE ViewPatterns #-}
 
 module Language.Smudge.Semantics.Ty (
+  Capability(Eventful),
   Ty(..),
   SymbolTable(..),
   elaborate,
@@ -43,9 +44,12 @@ type Envar = String
 
 type Capvar = String
 
+data Capability = Eventful TaggedName
+    deriving (Show, Eq, Ord)
+
 data Ty = Tyvar (Maybe Ty) String
         | Ty TaggedName
-        | Cap (Maybe Capvar) (Set TaggedName)
+        | Cap (Maybe Capvar) (Set Capability)
         | Ty :-> Ty
         | Product [Ty]
         | Record Env
@@ -57,12 +61,15 @@ infixr 8 :->
 prettyField :: (TaggedName, Ty) -> String
 prettyField (x, tau) = show x ++ ": " ++ pretty tau
 
+prettyCap :: Capability -> String
+prettyCap (Eventful x) = "eventful " ++ show x
+
 pretty :: Ty -> String
 pretty (Tyvar tau x) = x ++ case tau of Nothing -> ""; Just tau -> "^(" ++ pretty tau ++ "?)"
 pretty (Ty x) = show x
 pretty (Cap Nothing xs) | null xs = "uneventful"
-pretty (Cap Nothing xs) = intercalate ", " $ map (("eventful " ++) . show) (toList xs)
-pretty (Cap (Just p) xs) = intercalate ", " $ p : map (("eventful " ++) . show) (toList xs)
+pretty (Cap Nothing xs) = intercalate ", " $ map prettyCap (toList xs)
+pretty (Cap (Just p) xs) = intercalate ", " $ p : map prettyCap (toList xs)
 pretty (tau1 :-> tau2) = pretty tau1 ++ " -> " ++ pretty tau2
 pretty (Product []) = "void"
 pretty (Product [x]) = pretty x
@@ -228,14 +235,14 @@ instance Infer (Event TaggedName, Function TaggedName) where
            alpha_pi <- Tyvar Nothing <$> freshTyvar
            let g_a = Map.singleton (x_a, alpha_a :-> Cap Nothing Set.empty)
                c = Variant (Just g) g_a :~: tau :/\ alpha_pi `EqRange` alpha_a
-               ty = alpha_pi :-> Cap Nothing (Set.singleton x_a) -- x_a here is a hack around the current code gen
+               ty = alpha_pi :-> Cap Nothing (Set.singleton $ Eventful x_a) -- x_a here is a hack around the current code gen
            return (c, ty)
     infer sig gamma (a, FuncVoid f) =
         do alpha  <- Tyvar (Just $ Product []) <$> freshTyvar
            psi <- freshCapvar
            let Just tau = Map.lookup f gamma
                -- TODO what about EventAny? This leads to first.smudge inferring the wrong type for @sideEffect
-               cap_x = case a of Event x -> Set.singleton x; _ -> Set.empty
+               cap_x = case a of Event x -> Set.singleton $ Eventful x; _ -> Set.empty
                c = tau :~: alpha :-> Cap (Just psi) cap_x
            return (c, tau)
 
