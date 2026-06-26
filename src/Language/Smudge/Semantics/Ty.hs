@@ -8,6 +8,7 @@
 
 module Language.Smudge.Semantics.Ty (
   Capability(Eventful),
+  uncaps,
   Ty(..),
   SymbolTable(..),
   elaborate,
@@ -47,9 +48,29 @@ type Capvar = String
 data Capability = Eventful TaggedName
     deriving (Show, Eq, Ord)
 
+newtype Caps = Caps { uncaps :: (Set Capability) }
+    deriving (Show, Eq, Ord)
+
+nullC     = null   . uncaps
+lengthC   = length . uncaps
+toListC   = toList . uncaps
+
+singletonC = Caps . Set.singleton
+
+diffC :: Caps -> Caps -> Caps
+(Caps cs) `diffC` (Caps cs') = Caps cs''
+    where cs'' = difference cs cs'
+
+instance Semigroup Caps where
+    (Caps cs) <> (Caps cs') = Caps $ cs''
+        where cs'' = cs <> cs'
+
+instance Monoid Caps where
+    mempty = Caps mempty
+
 data Ty = Tyvar (Maybe Ty) String
         | Ty TaggedName
-        | Cap (Maybe Capvar) (Set Capability)
+        | Cap (Maybe Capvar) Caps
         | Ty :-> Ty
         | Product [Ty]
         | Record Env
@@ -67,9 +88,9 @@ prettyCap (Eventful x) = "eventful " ++ show x
 pretty :: Ty -> String
 pretty (Tyvar tau x) = x ++ case tau of Nothing -> ""; Just tau -> "^(" ++ pretty tau ++ "?)"
 pretty (Ty x) = show x
-pretty (Cap Nothing xs) | null xs = "uneventful"
-pretty (Cap Nothing xs) = intercalate ", " $ map prettyCap (toList xs)
-pretty (Cap (Just p) xs) = intercalate ", " $ p : map prettyCap (toList xs)
+pretty (Cap Nothing xs) | nullC xs = "uneventful"
+pretty (Cap Nothing xs) = intercalate ", " $ map prettyCap (toListC xs)
+pretty (Cap (Just p) xs) = intercalate ", " $ p : map prettyCap (toListC xs)
 pretty (tau1 :-> tau2) = pretty tau1 ++ " -> " ++ pretty tau2
 pretty (Product []) = "void"
 pretty (Product [x]) = pretty x
@@ -235,14 +256,14 @@ instance Infer (Event TaggedName, Function TaggedName) where
            alpha_pi <- Tyvar Nothing <$> freshTyvar
            let g_a = Map.singleton (x_a, alpha_a :-> Cap Nothing mempty)
                c = Variant (Just g) g_a :~: tau :/\ alpha_pi `EqRange` alpha_a
-               ty = alpha_pi :-> Cap Nothing (Set.singleton $ Eventful x_a) -- x_a here is a hack around the current code gen
+               ty = alpha_pi :-> Cap Nothing (singletonC $ Eventful x_a) -- x_a here is a hack around the current code gen
            return (c, ty)
     infer sig gamma (a, FuncVoid f) =
         do alpha  <- Tyvar (Just $ Product []) <$> freshTyvar
            psi <- freshCapvar
            let Just tau = Map.lookup f gamma
                -- TODO what about EventAny? This leads to first.smudge inferring the wrong type for @sideEffect
-               cap_x = case a of Event x -> Set.singleton $ Eventful x; _ -> mempty
+               cap_x = case a of Event x -> singletonC $ Eventful x; _ -> mempty
                c = tau :~: alpha :-> Cap (Just psi) cap_x
            return (c, tau)
 
@@ -274,11 +295,11 @@ unify = go
           go (Product taus1 :~: Product taus2) | length taus1 == length taus2 = goPairs taus1 taus2
           go (Record gamma1 :~: Record gamma2) | keys gamma1 == keys gamma2 = goPairs (toList gamma2) (toList gamma2)
           go (t1@(Cap Nothing _) :~: t2@(Cap (Just _) _)) = go $ t2 :~: t1
-          go (Cap (Just p) xs :~: Cap Nothing ys) | null $ difference xs ys = return $ Map.singleton (p, Cap Nothing $ difference ys xs)
+          go (Cap (Just p) xs :~: Cap Nothing ys) | nullC $ diffC xs ys = return $ Map.singleton (p, Cap Nothing $ diffC ys xs)
           go (Cap (Just p_x) xs :~: Cap (Just p_y) ys) | p_x /= p_y =
               do p_z <- freshCapvar
-                 let tau_x = Cap (Just p_z) $ difference ys xs
-                     tau_y = Cap (Just p_z) $ difference xs ys
+                 let tau_x = Cap (Just p_z) $ diffC ys xs
+                     tau_y = Cap (Just p_z) $ diffC xs ys
                  return $ Map.fromList [(p_x, tau_x), (p_y, tau_y)]
           go (Variant Nothing (ksvs -> (xks, xvs)) :~: Variant Nothing (ksvs -> (yks, yvs))) | xks == yks = goPairs xvs yvs
           go (t1@(Variant Nothing _) :~: t2@(Variant (Just _) _)) = go $ t2 :~: t1
@@ -352,13 +373,19 @@ data Resolution = Strict | Permissive | Passthrough
 class Resolve a where
     resolve :: Resolution -> a -> Except TypeError a
 
+instance Resolve Caps where
+    resolve = collapse
+        where collapse :: Resolution -> Caps -> Except TypeError Caps
+              collapse Passthrough cs         = return cs
+              collapse _ cs | lengthC cs <= 1 = return cs
+              collapse Strict (Caps cs)       = throwError $ "Could not strictly resolve function used in multiple contexts:\n    " ++ show cs ++ "\n"
+              collapse Permissive _           = return mempty
+
 instance Resolve Ty where
     resolve Passthrough tau       = return tau
     resolve r tau@(Tyvar _ _)     = return tau
     resolve r tau@(Ty _)          = return tau
-    resolve r tau@(Cap _ cs) | length cs <= 1 = return tau
-    resolve Strict     (Cap _ cs) = throwError $ "Could not strictly resolve function used in multiple contexts:\n    " ++ show cs ++ "\n"
-    resolve Permissive (Cap p  _) = return $ Cap p mempty
+    resolve r (Cap p cs)          = Cap p <$> resolve r cs
     resolve r (tau1 :-> tau2)     = (:->) <$> resolve r tau1 <*> resolve r tau2
     resolve r (Product taus)      = Product <$> resolve r taus
     resolve r (Record gamma)      = Record <$> resolve r gamma
