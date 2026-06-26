@@ -141,7 +141,7 @@ shown in Figure~\ref{fig:types}.
 
     <$\tau$> ::= $\alpha^{\tau?}$ | "machine" <x> | \unitty | $\phi$ | $\tau \rightarrow \tau$ | $\tau \times \tau$ | $\Pi\ \Gamma$ | $\Sigma\ \Gamma$
 
-    <$\phi$> ::= $\varnothing$ | $\psi$ | $\phi$, "eventful" <x>
+    <$\phi$> ::= $\varnothing$ | $\psi$ | $\phi$, "eventful" <x> | $\phi$, "wildcard" <x>
 
     <C> ::= $\top$ | $\tau \sim \tau$ | $\tau \sim$ "range" $\tau$ | <C> $\land$ <C>
   \end{grammar}
@@ -187,6 +187,15 @@ the active event of type $x$ is available to the side effect in question.
 %
 When compiled, this will appear in C as a normal parameter to the function,
 which returns \void.
+%
+There is an additional capability we list here, \syntax{"wildcard" $x$}, meaning
+that any active event from machine $x$ could be made available---this enables
+locally inferring the type of the wildcard ``any'' event.
+%
+The \syntax{"wildcard"} capabilities only exist during type inference and are
+not visible to the user or to code generation; at the end of solving they are
+resolved into the concrete set of \syntax{"eventful"} capabilities known to the
+machine in question.
 
 Constraints come in two flavors:
 trivially true ($\top$),
@@ -351,6 +360,9 @@ current event $x$.
 This parameterization is a deviation from the typical type inference approach,
 but avoids greatly increasing the complexity of unification, described below.
 %
+For simplicity, we omit the details of the ``any'' event handler, which is a
+variation on this rule that uses the machine name instead of the event name.
+%
 Because the return type for all side effects is a capability, we use
 $\phi$ to make this arrangement explicit.
 %
@@ -411,7 +423,9 @@ The Function rule looks up and returns the type $\tau$ for the name in the type
 environment.
 %
 It constrains $\tau$ to be a function with at least the capability
-\syntax{"eventful" $x$}, the remaining being absorbed by the slack capability
+\syntax{"eventful" $x$} (or \syntax{"wildcard" $x$} in the case where the side
+effect occurs in the handler for the ``any'' event), the remaining being
+absorbed by the slack capability
 variable $\psi$, and arguments matched to the fresh tyvar $\alpha$ that default
 to the unit type \unitty.
 
@@ -609,6 +623,10 @@ and $\psi_y$ are mapped to their counterparts, but with a twist---they both
 include some fresh variable $\psi_z$, accounting for unknown subsets that will
 be determined later by other constraints (or reduced to $\varnothing$ at the end
 of unification).
+%
+For simplicity, we omit resolution of \syntax{"wildcard" $x_m$} capabilities;
+informally, the only change is specializing set difference by filtering out any
+\syntax{"eventful" $x_m.x_a$} capabilities.
 
 The EqualEnvar rule is similar to the EqualTyvar rule, in that it performs an
 occurs check on the every type in the range of the environment, and then

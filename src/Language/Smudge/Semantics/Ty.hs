@@ -17,22 +17,23 @@ module Language.Smudge.Semantics.Ty (
 
 import Language.Smudge.Grammar (
     StateMachine(StateMachine),
-    Event(Event, EventEnter, EventExit),
+    Event(Event, EventAny, EventEnter, EventExit),
     Function(FuncVoid, FuncEvent),
     SideEffect(SideEffect),
     EventHandler,
     WholeState,
     )
 import Language.Smudge.Semantics.Model (
+    machineOf,
     TaggedName,
     )
 
 import Data.List (intercalate)
 import Data.Set (Set, difference)
-import qualified Data.Set as Set(singleton)
+import qualified Data.Set as Set(singleton, fromList, filter, map, member)
 import Data.Map.Ordered (OMap, unionWithL, intersectionWith, assocs, toAscList, (\\))
 import qualified Data.Map.Ordered as Map(empty, lookup, singleton, fromList)
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromMaybe, fromJust)
 import Data.Foldable (toList)
 import Control.Monad.State (StateT, MonadState, evalStateT, get, put)
 import Control.Monad.Except (Except, throwError)
@@ -46,7 +47,25 @@ type Envar = String
 type Capvar = String
 
 data Capability = Eventful TaggedName
+                | Wildcard TaggedName
     deriving (Show, Eq, Ord)
+
+isWild :: Capability -> Bool
+isWild (Wildcard _) = True
+isWild _ = False
+
+nameMap :: (TaggedName -> a) -> Capability -> a
+nameMap f (Eventful x) = f x
+nameMap f (Wildcard x) = f x
+
+justMachine :: TaggedName -> TaggedName
+justMachine = fromJust . machineOf
+
+capMachine :: Capability -> TaggedName
+capMachine = nameMap justMachine
+
+capMachineIn :: Set TaggedName -> Capability -> Bool
+capMachineIn ms = nameMap $ flip Set.member ms . justMachine
 
 newtype Caps = Caps { uncaps :: (Set Capability) }
     deriving (Show, Eq, Ord)
@@ -56,14 +75,28 @@ lengthC   = length . uncaps
 toListC   = toList . uncaps
 
 singletonC = Caps . Set.singleton
+fromListC  = Caps . Set.fromList
 
+-- This is best effort, as there is a "gotcha" that
+-- wildcards on the left are not subtracted from,
+-- since we can't decide their complement.
+-- This seems worse than it is---in practice, it
+-- can only prevent ostensibly compatible types
+-- from unifying in some corner cases, and adding
+-- redundant wildcards that get eliminated later.
 diffC :: Caps -> Caps -> Caps
-(Caps cs) `diffC` (Caps cs') = Caps cs''
+(Caps cs) `diffC` (Caps cs') = Caps cs'''
     where cs'' = difference cs cs'
+          ws = Set.filter isWild cs'
+          ms = Set.map capMachine ws
+          cs''' = Set.filter (not . capMachineIn ms) cs''
 
 instance Semigroup Caps where
-    (Caps cs) <> (Caps cs') = Caps $ cs''
+    (Caps cs) <> (Caps cs') = Caps $ es <> ws
         where cs'' = cs <> cs'
+              ws = Set.filter isWild cs''
+              ms = Set.map capMachine ws
+              es = Set.filter (not . capMachineIn ms) cs''
 
 instance Monoid Caps where
     mempty = Caps mempty
@@ -84,6 +117,7 @@ prettyField (x, tau) = show x ++ ": " ++ pretty tau
 
 prettyCap :: Capability -> String
 prettyCap (Eventful x) = "eventful " ++ show x
+prettyCap (Wildcard x) = "wildcard " ++ show x
 
 pretty :: Ty -> String
 pretty (Tyvar tau x) = x ++ case tau of Nothing -> ""; Just tau -> "^(" ++ pretty tau ++ "?)"
@@ -182,7 +216,8 @@ elaborate res (SymbolTable gamma) ms =
            gamma' <- lift $ close $ subst theta gamma'
            tau    <- lift $ close $ subst theta tau
            let (Record gamma_tau) = tau
-           SymbolTable <$> lift (resolve res $ disjUnion gamma' gamma_tau)
+               gamma'' = disjUnion gamma' gamma_tau
+           SymbolTable <$> lift (resolve res gamma'' gamma'')
 
 class Infer x where
     infer :: (Num i, Show i, MonadState i m) => Env -> Env -> x -> m (Constraint, Ty)
@@ -262,8 +297,7 @@ instance Infer (Event TaggedName, Function TaggedName) where
         do alpha  <- Tyvar (Just $ Product []) <$> freshTyvar
            psi <- freshCapvar
            let Just tau = Map.lookup f gamma
-               -- TODO what about EventAny? This leads to first.smudge inferring the wrong type for @sideEffect
-               cap_x = case a of Event x -> singletonC $ Eventful x; _ -> mempty
+               cap_x = case a of Event x -> singletonC $ Eventful x; EventAny x -> singletonC $ Wildcard x; _ -> mempty
                c = tau :~: alpha :-> Cap (Just psi) cap_x
            return (c, tau)
 
@@ -371,25 +405,29 @@ data Resolution = Strict | Permissive | Passthrough
     deriving (Show, Eq)
 
 class Resolve a where
-    resolve :: Resolution -> a -> Except TypeError a
+    resolve :: Resolution -> Env -> a -> Except TypeError a
 
 instance Resolve Caps where
-    resolve = collapse
+    resolve r g = collapse r . mconcat . map resWild . toListC
         where collapse :: Resolution -> Caps -> Except TypeError Caps
               collapse Passthrough cs         = return cs
               collapse _ cs | lengthC cs <= 1 = return cs
               collapse Strict (Caps cs)       = throwError $ "Could not strictly resolve function used in multiple contexts:\n    " ++ show cs ++ "\n"
               collapse Permissive _           = return mempty
+              resWild c@(Eventful _) = singletonC c
+              resWild   (Wildcard x) = fromListC $ map Eventful $ keys g'
+                where Just (Variant _ g') = Map.lookup m g
+                      m = justMachine x
 
 instance Resolve Ty where
-    resolve Passthrough tau       = return tau
-    resolve r tau@(Tyvar _ _)     = return tau
-    resolve r tau@(Ty _)          = return tau
-    resolve r (Cap p cs)          = Cap p <$> resolve r cs
-    resolve r (tau1 :-> tau2)     = (:->) <$> resolve r tau1 <*> resolve r tau2
-    resolve r (Product taus)      = Product <$> resolve r taus
-    resolve r (Record gamma)      = Record <$> resolve r gamma
-    resolve r (Variant _ gamma)   = Variant Nothing <$> resolve r gamma
+    resolve Passthrough _ tau     = return tau
+    resolve r _ tau@(Tyvar _ _)   = return tau
+    resolve r _ tau@(Ty _)        = return tau
+    resolve r g (Cap p cs)        = Cap p <$> resolve r g cs
+    resolve r g (tau1 :-> tau2)   = (:->) <$> resolve r g tau1 <*> resolve r g tau2
+    resolve r g (Product taus)    = Product <$> resolve r g taus
+    resolve r g (Record gamma)    = Record <$> resolve r g gamma
+    resolve r g (Variant _ gamma) = Variant Nothing <$> resolve r g gamma
 
 instance (Traversable t, Resolve v) => Resolve (t v) where
-    resolve = traverse . resolve
+    resolve r = traverse . resolve r
