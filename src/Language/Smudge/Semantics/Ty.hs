@@ -27,8 +27,8 @@ import Language.Smudge.Semantics.Model (
     )
 
 import Data.List (intercalate)
-import Data.Set (Set, intersection, union, difference)
-import qualified Data.Set as Set(empty, singleton)
+import Data.Set (Set, difference)
+import qualified Data.Set as Set(singleton)
 import Data.Map.Ordered (OMap, unionWithL, intersectionWith, assocs, toAscList, (\\))
 import qualified Data.Map.Ordered as Map(empty, lookup, singleton, fromList)
 import Data.Maybe (fromMaybe)
@@ -213,7 +213,7 @@ instance Infer (EventHandler TaggedName) where
            c <- flip foldMapM ds $ \d_i -> do
                   (c_i, phi_i) <- infer sig gamma' (a, d_i)
                   return c_i
-           let ty = Record g_a :-> Cap Nothing Set.empty
+           let ty = Record g_a :-> Cap Nothing mempty
            return (c, ty)
 
 instance Infer (Event TaggedName, SideEffect TaggedName) where
@@ -223,7 +223,7 @@ instance Infer (Event TaggedName, SideEffect TaggedName) where
                           (c_i, tau_i) <- infer sig gamma (a, e_i)
                           return (c_i, [tau_i])
            psi <- freshCapvar
-           let ty = Cap (Just psi) Set.empty
+           let ty = Cap (Just psi) mempty
                cs = tau_d :~: Product taus :-> ty <> c_d <> c
            return (cs, ty)
 
@@ -233,7 +233,7 @@ instance Infer (Event TaggedName, Function TaggedName) where
            g <- freshEnvar
            alpha_a  <- Tyvar (Just $ Record Map.empty) <$> freshTyvar
            alpha_pi <- Tyvar Nothing <$> freshTyvar
-           let g_a = Map.singleton (x_a, alpha_a :-> Cap Nothing Set.empty)
+           let g_a = Map.singleton (x_a, alpha_a :-> Cap Nothing mempty)
                c = Variant (Just g) g_a :~: tau :/\ alpha_pi `EqRange` alpha_a
                ty = alpha_pi :-> Cap Nothing (Set.singleton $ Eventful x_a) -- x_a here is a hack around the current code gen
            return (c, ty)
@@ -242,7 +242,7 @@ instance Infer (Event TaggedName, Function TaggedName) where
            psi <- freshCapvar
            let Just tau = Map.lookup f gamma
                -- TODO what about EventAny? This leads to first.smudge inferring the wrong type for @sideEffect
-               cap_x = case a of Event x -> Set.singleton $ Eventful x; _ -> Set.empty
+               cap_x = case a of Event x -> Set.singleton $ Eventful x; _ -> mempty
                c = tau :~: alpha :-> Cap (Just psi) cap_x
            return (c, tau)
 
@@ -312,7 +312,7 @@ instance Subst Ty where
               go tau@(Cap Nothing    cs)  = tau
               go tau@(Cap (Just psi) cs)  = case Map.lookup psi theta of
                                               Nothing -> tau
-                                              Just (Cap p cs') -> Cap p $ union cs' cs
+                                              Just (Cap p cs') -> Cap p $ cs' <> cs
               go (tau1 :-> tau2)          = go tau1 :-> go tau2
               go (Product taus)           = Product $ subst theta taus
               go (Record gamma)           = Record $ subst theta gamma
@@ -358,7 +358,7 @@ instance Resolve Ty where
     resolve r tau@(Ty _)          = return tau
     resolve r tau@(Cap _ cs) | length cs <= 1 = return tau
     resolve Strict     (Cap _ cs) = throwError $ "Could not strictly resolve function used in multiple contexts:\n    " ++ show cs ++ "\n"
-    resolve Permissive (Cap p  _) = return $ Cap p Set.empty
+    resolve Permissive (Cap p  _) = return $ Cap p mempty
     resolve r (tau1 :-> tau2)     = (:->) <$> resolve r tau1 <*> resolve r tau2
     resolve r (Product taus)      = Product <$> resolve r taus
     resolve r (Record gamma)      = Record <$> resolve r gamma
