@@ -45,6 +45,14 @@ import Text.Parsec (
     (<?>),
     )
 
+-- Identifiers
+
+identifier :: Stream s m Token => ParsecT s u m Identifier
+identifier = identify <$> tok ID
+
+foreign_identifier :: Stream s m Token => ParsecT s u m Identifier
+foreign_identifier = identify <$> tok FID
+
 -- Smudge parsing
 smudge_file :: Stream s m Token => ParsecT s u m ([[String]], [(StateMachine Identifier, [WholeState Identifier])])
 smudge_file = (,) <$> many pragma <*> smudgle
@@ -63,7 +71,7 @@ state_machine_def :: Stream s m Token => ParsecT s u m (StateMachine Identifier,
 state_machine_def = (,) <$> state_machine_name <*> state_machine
 
 state_machine_name :: Stream s m Token => ParsecT s u m (StateMachine Identifier)
-state_machine_name = StateMachine <$> identify <$> tok ID
+state_machine_name = StateMachine <$> identifier
 
 state_machine :: Stream s m Token => ParsecT s u m [WholeState Identifier]
 state_machine = tok SMBEGIN *> state_machine_body <* tok SMEND
@@ -82,7 +90,7 @@ state_def = do
     return (name, start, en, ehs, ex)
 
 state_name :: Stream s m Token => ParsecT s u m (State Identifier)
-state_name = State <$> identify <$> tok ID
+state_name = State <$> identifier
 
 enter_exit :: Stream s m Token => ParsecT s u m [SideEffect Identifier]
 enter_exit = option [] $ tok EEBEGIN *> side_effect_list <* tok EEEND
@@ -101,7 +109,7 @@ event_handler =
                           <?> "state transition for event \"" ++ show ev ++ "\""
 
 event_name :: Stream s m Token => ParsecT s u m (Event Identifier)
-event_name = Event <$> identify <$> tok ID
+event_name = Event <$> identifier
 
 -- Transitions
 
@@ -121,10 +129,7 @@ side_effect = SideEffect <$> function <*> many function
           <?> "side effect"
 
 function :: Stream s m Token => ParsecT s u m (Function Identifier)
-function = FuncVoid <$> function_call <|> (FuncEvent <$> qualified_event)
-
-function_call :: Stream s m Token => ParsecT s u m Identifier
-function_call = identify <$> tok FID
+function = FuncVoid <$> foreign_identifier <|> (FuncEvent <$> qualified_event)
 
 qualified_event :: Stream s m Token => ParsecT s u m (QEvent Identifier)
 qualified_event = (,) <$> (try (state_machine_name <* tok DOT) <|> pure StateMachineSame)
