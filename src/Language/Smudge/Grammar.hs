@@ -2,6 +2,8 @@
 -- This software is released under the 3-Clause BSD License.
 -- The license can be viewed at https://github.com/smudgelang/smudge/blob/master/LICENSE
 
+{-# LANGUAGE DeriveFunctor #-}
+
 module Language.Smudge.Grammar (
     Module(..),
     StateMachine(..),
@@ -18,29 +20,13 @@ module Language.Smudge.Grammar (
 data Module a = Module String [StateMachine a]
 
 data StateMachine a = StateMachine a | StateMachineSame
-    deriving (Show, Eq, Ord)
-
-instance Functor StateMachine where
-    fmap f (StateMachine a) = StateMachine (f a)
-    fmap _ StateMachineSame = StateMachineSame
+    deriving (Show, Eq, Ord, Functor)
 
 data State a = State a | StateAny | StateSame | StateEntry
-    deriving (Show, Eq, Ord)
-
-instance Functor State where
-    fmap f (State a)  = State (f a)
-    fmap _ StateAny   = StateAny
-    fmap _ StateSame  = StateSame
-    fmap _ StateEntry = StateEntry
+    deriving (Show, Eq, Ord, Functor)
 
 data Event a = Event a | EventAny a | EventEnter | EventExit
-    deriving (Show, Eq, Ord)
-
-instance Functor Event where
-    fmap f (Event a)  = Event (f a)
-    fmap f (EventAny a) = EventAny (f a)
-    fmap _ EventEnter = EventEnter
-    fmap _ EventExit  = EventExit
+    deriving (Show, Eq, Ord, Functor)
 
 type QEvent a = (StateMachine a, Event a)
 
