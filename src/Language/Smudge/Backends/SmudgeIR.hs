@@ -262,7 +262,7 @@ sName smName StateAny  = qualify (smName, "ANY_STATE")
 mangleEv :: Event TaggedName -> QualifiedName
 mangleEv (Event evName) = extractWith seq qualify $ qualify evName
 mangleEv EventEnter = qualify "enter"
-mangleEv EventExit = qualify "exit"
+mangleEv (EventExit _) = qualify "exit"
 mangleEv (EventAny _) = qualify "any"
 
 boundArgs :: Def a -> Def a
@@ -338,8 +338,8 @@ lowerMachine cfg ssyms (StateMachine smName, g') = map (markUnused . boundArgs) 
     ]
     where
         syms = lowerSolverSyms ssyms
-        g = insEdges ([(n, n, Happening EventExit ex [NoTransition])
-                       | (n, EnterExitState {st = State _, ex = ex@(_:_)}) <- labNodes $ delNodes (finalStates g' ++ [n | n <- nodes g', (_, _, Happening EventExit _ _) <- out g' n]) g'] ++
+        g = insEdges ([(n, n, Happening (EventExit q) ex [NoTransition])
+                       | (n, EnterExitState {st = State q, ex = ex@(_:_)}) <- labNodes $ delNodes (finalStates g' ++ [n | n <- nodes g', (_, _, Happening (EventExit _) _ _) <- out g' n]) g'] ++
                       [(n, n, Happening EventEnter en [NoTransition])
                        | (n, EnterExitState {en, st = State _}) <- labNodes $ delNodes [n | n <- nodes g', (_, _, Happening EventEnter _ _) <- out g' n] g']) g'
         notShadowing x = not $ x `elem` map qualify (keys syms)
@@ -495,6 +495,7 @@ lowerMachine cfg ssyms (StateMachine smName, g') = map (markUnused . boundArgs) 
 
         anyExitFun :: [State TaggedName] -> Def QualifiedName
         anyExitFun ss = FunDef f_name [] (Internal, Void :-> Void) [] es
-            where f_name = qualify (sName smName StateAny, mangleEv EventExit)
+            where s_name = sName smName StateAny
+                  f_name = qualify (s_name, mangleEv $ EventExit $ TagState s_name)
                   es = [Cases (Value $ Var stateVar) cases []]
-                  cases = [(st_id s, [ExprS $ FunCall (qualify (s, mangleEv EventExit)) []]) | (State s) <- ss]
+                  cases = [(st_id s, [ExprS $ FunCall (qualify (s, mangleEv $ EventExit s)) []]) | (State s) <- ss]

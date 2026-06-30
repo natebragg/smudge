@@ -168,7 +168,7 @@ defState :: SymTab -> WholeState TaggedName -> State Int SymTab
 defState gamma (_, _, en, eh, ex) =
     do gamma'   <-       defEvent gamma   (EventEnter, en, undefined)
        gamma''  <- foldM defEvent gamma'  eh
-       gamma''' <-       defEvent gamma'' (EventExit,  ex, undefined)
+       gamma''' <-       defEvent gamma'' (EventExit  undefined, ex, undefined)
        return gamma'''
 
 retag (TagEvent n) = TagFunction n
@@ -208,7 +208,7 @@ inferState :: SymTab -> WholeState TaggedName -> Constraint
 inferState gamma (_, _, en, eh, ex) = c_n :/\ c_h :/\ c_x
     where c_n = inferEvent gamma (EventEnter, en, undefined)
           c_h = conjoin $ map (inferEvent gamma) eh
-          c_x = inferEvent gamma (EventExit, ex, undefined)
+          c_x = inferEvent gamma (EventExit  undefined, ex, undefined)
 
 inferEvent :: SymTab -> EventHandler TaggedName -> Constraint
 inferEvent gamma (Event x_a, ds, _) =

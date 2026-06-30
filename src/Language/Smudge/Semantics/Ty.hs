@@ -18,6 +18,7 @@ module Language.Smudge.Semantics.Ty (
 import Language.Smudge.Grammar (
     StateMachine(StateMachine),
     Event(Event, EventAny, EventEnter, EventExit),
+    State(State),
     Function(FuncVoid, FuncEvent),
     SideEffect(SideEffect),
     EventHandler,
@@ -246,7 +247,7 @@ instance Infer (StateMachine TaggedName, [(WholeState TaggedName)]) where
            return (c, alpha)
 
 instance Infer (WholeState TaggedName) where
-    infer sig gamma (_, _, ens, ehs, exs) =
+    infer sig gamma (s, _, ens, ehs, exs) =
         -- One odd behavior here is that anyevent is dropped; morally, this should
         -- be included in the type, but that would lead to the problem being in
         -- gflat(2), and we never act on the state's type anyhow, so we can cheat.
@@ -257,8 +258,9 @@ instance Infer (WholeState TaggedName) where
                          let a = case eh_i of (Event a , _, _) -> Just a; _ -> Nothing
                              g_q_i = Map.singleton <$> flip (,) tau_i <$> a
                          return (c_i, g_q_i)
+           let q = case s of State q -> q; _ -> undefined
            c_en <- flip foldMapM ens $ \d_i -> fst <$> infer sig gamma (EventEnter :: Event TaggedName, d_i)
-           c_ex <- flip foldMapM exs $ \d_i -> fst <$> infer sig gamma (EventExit  :: Event TaggedName, d_i)
+           c_ex <- flip foldMapM exs $ \d_i -> fst <$> infer sig gamma (EventExit  q, d_i)
            let ty = Variant Nothing $ fromMaybe Map.empty g_q
            return (c_en <> c <> c_ex, ty)
 
