@@ -190,7 +190,8 @@ passConvertAnys :: [(StateMachine Identifier, [WholeState Identifier])] -> [(Sta
 passConvertAnys = map $ fmap $ map conv_ws
     where conv_ws (st, fs, en, es, ex) = (conv_st st, fs, en, map conv_eh es, ex)
           conv_eh (ev, ses, s) = (conv_ev ev, ses, s)
-          conv_st st = if (\case State s -> rawtest (== "_") s; _ -> False) st then StateAny else st
+          conv_st (State s) | rawtest (== "_") s = StateAny s
+          conv_st st = st
           conv_ev (Event e) | rawtest (== "_") e = EventAny e
           conv_ev ev = ev
 

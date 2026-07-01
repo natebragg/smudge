@@ -39,6 +39,7 @@ import Language.Smudge.Semantics.Model (
   Tagged(..),
   extractWith,
   disqualifyTag,
+  machineOf,
   events_for,
   states_for,
   )
@@ -56,6 +57,7 @@ import Data.Graph.Inductive.Graph (labNodes, lab, out, suc, insEdges, nodes, del
 import Data.List ((\\), nub)
 import Data.Map (Map, empty, insert, (!), toList, keys)
 import Data.Set (member)
+import Data.Maybe (fromJust)
 
 seqtup :: Applicative f => (f a, f b) -> f (a, b)
 seqtup (a, b) = (,) <$> a <*> b
@@ -255,9 +257,9 @@ instance Traversable Var where
     traverse f (SumVar x) = SumVar <$> f x
     traverse f (Field v x) = Field <$> traverse f v <*> f x
 
-sName :: TaggedName -> State TaggedName -> QualifiedName
-sName _ (State s) = qualify s
-sName smName StateAny  = qualify (smName, "ANY_STATE")
+sName :: State TaggedName -> QualifiedName
+sName (State s) = qualify s
+sName (StateAny s)  = qualify (fromJust $ machineOf s, "ANY_STATE")
 
 mangleEv :: Event TaggedName -> QualifiedName
 mangleEv (Event evName) = extractWith seq qualify $ qualify evName
@@ -319,7 +321,7 @@ lowerMachine cfg ssyms (StateMachine smName, g') = map (markUnused . boundArgs) 
       ++ [
         currentStateNameFun
     ] ++ [
-        anyExitFun [st | (n, EnterExitState {st, ex = (_:_)}) <- labNodes g, n `notElem` finalStates g] | (_, EnterExitState {st = StateAny}) <- labNodes g
+        anyExitFun [st | (n, EnterExitState {st, ex = (_:_)}) <- labNodes g, n `notElem` finalStates g] | (_, EnterExitState {st = StateAny _}) <- labNodes g
     ] ++ [
         unhandledEventFun (any_handler e) e | e <- events
     ] ++ [
@@ -330,11 +332,11 @@ lowerMachine cfg ssyms (StateMachine smName, g') = map (markUnused . boundArgs) 
         handleMessageFun,
         freeMessageFun
     ] ++ [
-        stateEventFun st h s' (st == StateAny || not (null ex)) | (n, EnterExitState {st, ex}) <- labNodes g,
+        stateEventFun st h s' (case st of StateAny _ -> True; _ -> not (null ex)) | (n, EnterExitState {st, ex}) <- labNodes g,
          (_, n', h) <- out g n,
          Just EnterExitState {st = s'} <- [lab g n'],
-         case st of State _ -> True; StateAny -> True; _ -> False,
-         case s' of State _ -> True; StateAny -> True; _ -> False
+         case st of State _ -> True; StateAny _ -> True; _ -> False,
+         case s' of State _ -> True; StateAny _ -> True; _ -> False
     ]
     where
         syms = lowerSolverSyms ssyms
@@ -362,8 +364,8 @@ lowerMachine cfg ssyms (StateMachine smName, g') = map (markUnused . boundArgs) 
         states = states_for g
         events = events_for g
         s_handlers e = [(s, h) | (s, Just h@(State _, _)) <- toList (handlers e g)]
-        unhandled e = [s | (s, Just (StateAny, _)) <- toList (handlers e g)] ++ [s | (s, Nothing) <- toList (handlers e g)]
-        any_handler e = nub [h | (_, Just h@(StateAny, _)) <- toList (handlers e g)]
+        unhandled e = [s | (s, Just (StateAny _, _)) <- toList (handlers e g)] ++ [s | (s, Nothing) <- toList (handlers e g)]
+        any_handler e = nub [h | (_, Just h@(StateAny _, _)) <- toList (handlers e g)]
         initial = head [qualify s | (n, EnterExitState {st = StateEntry}) <- labNodes g, n' <- suc g n,
                                     Just (EnterExitState {st = (State s)}) <- [lab g n']]
 
@@ -397,7 +399,7 @@ lowerMachine cfg ssyms (StateMachine smName, g') = map (markUnused . boundArgs) 
                   event_var = head eventNames
                   ds = if (not $ null handler) || not (debug cfg) then [] else [VarDef Unresolved $ SumVDec wrap_name (Ty eventEnum) $ Init (evt_id evName, Value $ Var event_var)]
                   es = case handler of
-                           [(s, e')] -> [ExprS $ FunCall (qualify (sName smName s, mangleEv e')) (if e == e' then [Value $ Var event_var] else [])]
+                           [(s, e')] -> [ExprS $ FunCall (qualify (sName s, mangleEv e')) (if e == e' then [Value $ Var event_var] else [])]
                            [] -> call_panic_f [Literal panic_s, FunCall stateName_f [Value $ Var stateVar], FunCall eventName_f [Value $ Var wrap_name]]
                   panic_s = disqualifyTag smName ++ "{%s[%s]}: Unhandled event\n"
 
@@ -456,7 +458,7 @@ lowerMachine cfg ssyms (StateMachine smName, g') = map (markUnused . boundArgs) 
 
         stateEventFun :: State TaggedName -> Happening -> State TaggedName -> Bool -> Def QualifiedName
         stateEventFun st h st' do_exit = FunDef f_name eventNames (Internal, ty) [] $ logAState ++ map ExprS es
-            where f_name = qualify (sName smName st, mangleEv $ event h)
+            where f_name = qualify (sName st, mangleEv $ event h)
                   ty = case event h of
                               (Event t) -> Ty t :-> Void
                               otherwise -> Void :-> Void
@@ -466,10 +468,10 @@ lowerMachine cfg ssyms (StateMachine smName, g') = map (markUnused . boundArgs) 
                   format_s = disqualifyTag smName ++ "{%s}: Entering state\n"
 
                   event_var = head eventNames
-                  dest_state = qualify $ sName smName st'
-                  call_exit = FunCall (qualify (sName smName st, "exit")) []
+                  dest_state = qualify $ sName st'
+                  call_exit = FunCall (qualify (sName st, "exit")) []
                   assign_state = Var stateVar `Assign` Value (Var $ st_id dest_state)
-                  call_enter = FunCall (qualify (sName smName st', "enter")) []
+                  call_enter = FunCall (qualify (sName st', "enter")) []
 
                   isEventTy :: Ty QualifiedName -> Event TaggedName -> Bool
                   isEventTy a (Event e) = a == snd (syms ! e)
@@ -495,7 +497,7 @@ lowerMachine cfg ssyms (StateMachine smName, g') = map (markUnused . boundArgs) 
 
         anyExitFun :: [State TaggedName] -> Def QualifiedName
         anyExitFun ss = FunDef f_name [] (Internal, Void :-> Void) [] es
-            where s_name = sName smName StateAny
+            where s_name = sName $ StateAny $ TagState $ qualify (smName, "_")
                   f_name = qualify (s_name, mangleEv $ EventExit $ TagState s_name)
                   es = [Cases (Value $ Var stateVar) cases []]
                   cases = [(st_id s, [ExprS $ FunCall (qualify (s, mangleEv $ EventExit s)) []]) | (State s) <- ss]

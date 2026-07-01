@@ -40,8 +40,8 @@ instance (Graph gr) => Passable (OneEventHandlerPerState gr) where
         [] -> []
         ss -> [faultFor s es | (s, ess) <- ss, es <- ess]
         where htext = ", more than one handler for "
-              faultFor (State s) es@(Event e   :_) = Fault ERROR (at s)       $ (disqualifyTag sm_name) ++ ": in state " ++ show (disqualifyTag s) ++ htext ++ "event " ++ show (disqualifyTag e) ++ " is forbidden"
-              faultFor (State s)    (EventAny _:_) = Fault ERROR (at s)       $ (disqualifyTag sm_name) ++ ": in state " ++ show (disqualifyTag s) ++ htext ++ "any-event is forbidden"
-              faultFor  StateAny es@(Event e   :_) = Fault ERROR (at sm_name) $ (disqualifyTag sm_name) ++ ": in any-state"                        ++ htext ++ "event " ++ show (disqualifyTag e) ++ " is forbidden"
-              faultFor  StateAny    (EventAny _:_) = Fault ERROR (at sm_name) $ (disqualifyTag sm_name) ++ ": in any-state"                        ++ htext ++ "any-event is forbidden"
-              faultFor         s           (e  :_) = Fault BUG   (at sm_name) $ (disqualifyTag sm_name) ++ ": Invalid construction for " ++ show s ++ ", " ++ show e ++ ".  This is a bug in smudge."
+              faultFor    (State s) es@(Event e   :_) = Fault ERROR (at s)       $ (disqualifyTag sm_name) ++ ": in state " ++ show (disqualifyTag s) ++ htext ++ "event " ++ show (disqualifyTag e) ++ " is forbidden"
+              faultFor    (State s)    (EventAny _:_) = Fault ERROR (at s)       $ (disqualifyTag sm_name) ++ ": in state " ++ show (disqualifyTag s) ++ htext ++ "any-event is forbidden"
+              faultFor (StateAny _) es@(Event e   :_) = Fault ERROR (at sm_name) $ (disqualifyTag sm_name) ++ ": in any-state"                        ++ htext ++ "event " ++ show (disqualifyTag e) ++ " is forbidden"
+              faultFor (StateAny _)    (EventAny _:_) = Fault ERROR (at sm_name) $ (disqualifyTag sm_name) ++ ": in any-state"                        ++ htext ++ "any-event is forbidden"
+              faultFor            s           (e  :_) = Fault BUG   (at sm_name) $ (disqualifyTag sm_name) ++ ": Invalid construction for " ++ show s ++ ", " ++ show e ++ ".  This is a bug in smudge."

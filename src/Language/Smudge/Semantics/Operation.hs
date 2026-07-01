@@ -78,9 +78,9 @@ allHandlers g = fromList $
         let all_evt_handlers = all_handlers (== e)
         let all_any_handlers = all_handlers (\e -> case e of (EventAny _) -> True; _ -> False)
         let named_named = [h | h@(State _, _) <- all_evt_handlers]
-        let any_named = [h | h@(StateAny, _) <- all_evt_handlers]
+        let any_named = [h | h@(StateAny _, _) <- all_evt_handlers]
         let named_any = [h | h@(State _, _) <- all_any_handlers]
-        let any_any = [h | h@(StateAny, _) <- all_any_handlers]
+        let any_any = [h | h@(StateAny _, _) <- all_any_handlers]
         return $ (,) e $ fromList $
             do  (_, EnterExitState {st=st@(State _)}) <- states
                 let st_named = filter ((== st) . fst) named_named

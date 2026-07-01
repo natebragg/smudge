@@ -28,8 +28,8 @@ instance (Graph gr) => Monoid (NoTransientAnyState gr) where
 
 instance (Graph gr) => Passable (NoTransientAnyState gr) where
     type Representation (NoTransientAnyState gr) = gr EnterExitState Happening
-    accumulate (_, n , EnterExitState {st = StateAny}, o) a = mappend (NoTransientAnyState [n] [(n, n') | (Happening EventEnter _ _, n') <- o]) a
-    accumulate (i, n',                              _, _) a = mappend (NoTransientAnyState []  [(n, n') | (Happening EventEnter _ _, n ) <- i]) a
+    accumulate (_, n , EnterExitState {st = StateAny _}, o) a = mappend (NoTransientAnyState [n] [(n, n') | (Happening EventEnter _ _, n') <- o]) a
+    accumulate (i, n',                                _, _) a = mappend (NoTransientAnyState []  [(n, n') | (Happening EventEnter _ _, n ) <- i]) a
     test (StateMachine sm_name, g) (NoTransientAnyState ns ls) =
         case map snd $ filter ((`elem` ns) . fst) ls of
         []  -> []

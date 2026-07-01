@@ -28,8 +28,8 @@ instance (Graph gr) => Monoid (NoAnyEnterExit gr) where
 
 instance (Graph gr) => Passable (NoAnyEnterExit gr) where
     type Representation (NoAnyEnterExit gr) = gr EnterExitState Happening
-    accumulate (_, n , EnterExitState []        _ [], o) a = a
-    accumulate (_, n , EnterExitState en StateAny ex, o) a = mappend (NoAnyEnterExit $ en ++ ex) a
+    accumulate (_, n , EnterExitState []            _ [], o) a = a
+    accumulate (_, n , EnterExitState en (StateAny _) ex, o) a = mappend (NoAnyEnterExit $ en ++ ex) a
     accumulate                                         _ a = a
     test (StateMachine sm_name, g) (NoAnyEnterExit ses) =
         case map seName ses of

@@ -22,7 +22,7 @@ data Module a = Module String [StateMachine a]
 data StateMachine a = StateMachine a | StateMachineSame
     deriving (Show, Eq, Ord, Functor)
 
-data State a = State a | StateAny | StateSame | StateEntry
+data State a = State a | StateAny a | StateSame | StateEntry
     deriving (Show, Eq, Ord, Functor)
 
 data Event a = Event a | EventAny a | EventEnter | EventExit a

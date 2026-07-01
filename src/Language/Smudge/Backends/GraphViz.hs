@@ -81,7 +81,7 @@ instance Labellable (StateMachine TaggedName) where
 
 instance Labellable (State TaggedName) where
     toLabelValue (State s) = toLabelValue s
-    toLabelValue StateAny  = toLabelValue "Any"
+    toLabelValue (StateAny _) = toLabelValue "Any"
     toLabelValue StateSame = toLabelValue "Same"
 
 instance Labellable EnterExitState where
