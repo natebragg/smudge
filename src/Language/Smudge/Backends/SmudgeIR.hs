@@ -366,7 +366,7 @@ lowerMachine cfg ssyms (StateMachine smName, g') = map (markUnused . boundArgs) 
         s_handlers e = [(s, h) | (s, Just h@(State _, _)) <- toList (handlers e g)]
         unhandled e = [s | (s, Just (StateAny _, _)) <- toList (handlers e g)] ++ [s | (s, Nothing) <- toList (handlers e g)]
         any_handler e = nub [h | (_, Just h@(StateAny _, _)) <- toList (handlers e g)]
-        initial = head [qualify s | (n, EnterExitState {st = StateEntry}) <- labNodes g, n' <- suc g n,
+        initial = head [qualify s | (n, EnterExitState {st = StateEntry _}) <- labNodes g, n' <- suc g n,
                                     Just (EnterExitState {st = (State s)}) <- [lab g n']]
 
         stateNameFun :: Def QualifiedName

@@ -32,7 +32,7 @@ instance (Graph gr) => Monoid (OneInitialState gr) where
 
 instance (Graph gr) => Passable (OneInitialState gr) where
     type Representation (OneInitialState gr) = gr EnterExitState Happening
-    accumulate (i, _, EnterExitState {st = StateEntry}, o) a = mappend (OneInitialState i o) a
+    accumulate (i, _, EnterExitState {st = StateEntry _}, o) a = mappend (OneInitialState i o) a
     accumulate                                           _ a = a
     test (StateMachine sm_name, g) (OneInitialState is os) =
         case (length is, length os) of

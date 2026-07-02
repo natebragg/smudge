@@ -183,7 +183,7 @@ states_for g = [s | (_, EnterExitState {st=s@(State _)}) <- labNodes g]
 
 passInitialState :: [(StateMachine Identifier, [WholeState Identifier])] -> [(StateMachine Identifier, [WholeState Identifier])]
 passInitialState sms = map (\(sm, wss) -> (sm, foldr init [] wss)) sms
-    where init ws@(s, fs, en, es, ex) wss | elem Initial fs = (StateEntry, [], [], [(EventEnter, [], s)], []) : (s, filter (/= Initial) fs, en, es, ex) : wss
+    where init (s@(State q), fs, en, es, ex) wss | elem Initial fs = (StateEntry q, [], [], [(EventEnter, [], s)], []) : (s, filter (/= Initial) fs, en, es, ex) : wss
           init ws wss = ws : wss
 
 passConvertAnys :: [(StateMachine Identifier, [WholeState Identifier])] -> [(StateMachine Identifier, [WholeState Identifier])]

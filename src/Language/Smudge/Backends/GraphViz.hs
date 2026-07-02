@@ -126,7 +126,7 @@ smudgeParams sideEffects noTransitions clusterBox title entryNodes =
             cluster (n, nl@(sm, _)) = C (smToString sm) (N (n, nl))
             clusterAttrs c = [GraphAttrs [toLabel c, Concentrate True]]
             smToString (StateMachine s) = disqualifyTag s
-            fmtNode (_, (_, EnterExitState {st = StateEntry})) = [shape Circle, style filled, fillColor Black, toLabel ""]
+            fmtNode (_, (_, EnterExitState {st = StateEntry _})) = [shape Circle, style filled, fillColor Black, toLabel ""]
             fmtNode (_, l) = [toLabel l]
             fmt tl (n, _, eses) = (filtEntry n $ tl eses):map arrow (take 1 eses)
             keep = fmt toLabel
@@ -171,7 +171,7 @@ instance Backend GraphVizOption where
         where d = (graphToDot (smudgeParams renderSE renderNT (length gs > 1) inputName entryNodes) g') {graphID = Just (toGraphID " ")}
               g' = gfold gs
               (gs, _, _) = gswust
-              entryNodes = [n | (n, (_, EnterExitState {st = StateEntry})) <- G.labNodes g']
+              entryNodes = [n | (n, (_, EnterExitState {st = StateEntry _})) <- G.labNodes g']
               renderSE = not $ RenderSideEffects False `elem` os
               renderNT = not $ SuppressNoTransition `elem` os
 
