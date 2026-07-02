@@ -14,7 +14,7 @@ import Language.Smudge.Grammar (State, Event)
 import Language.Smudge.Semantics.Model (EnterExitState, Happening, TaggedName)
 import Language.Smudge.Semantics.Operation (BasicBlock)
 import Language.Smudge.Semantics.Solver (SymbolTable)
-import Language.Smudge.Grammar (StateMachine, WholeState)
+import Language.Smudge.Grammar (StateMachine, WholeMachine)
 import Language.Smudge.Passes.Passes (pass, Fault)
 import Language.Smudge.Passes.NoAnyEnterExit (NoAnyEnterExit)
 import Language.Smudge.Passes.NoDecidableNontermination (NoDecidableNontermination)
@@ -39,13 +39,13 @@ make_passes g = concat [pass g (undefined :: OneInitialState gr),
                         pass g (undefined :: NoTransientAnyState gr),
                         pass g (undefined :: NoTransientStateCycles gr)]
 
-name_passes :: (StateMachine TaggedName, [WholeState TaggedName]) -> [Fault]
+name_passes :: WholeMachine TaggedName -> [Fault]
 name_passes sm = concat [pass sm (undefined :: NoTargetAnyStates),
                          pass sm (undefined :: NoSentAnyEvents),
                          pass sm (undefined :: DeclaredStateNames),
                          pass sm (undefined :: UniqueStateNames)]
 
-link_passes :: (StateMachine TaggedName, [(StateMachine TaggedName, [WholeState TaggedName])]) -> [Fault]
+link_passes :: (StateMachine TaggedName, [WholeMachine TaggedName]) -> [Fault]
 link_passes sms = concat [pass sms (undefined :: DeclaredEventNames)]
 
 type_passes :: (StateMachine TaggedName, SymbolTable) -> [Fault]

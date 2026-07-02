@@ -15,7 +15,7 @@ import Language.Smudge.Grammar (
   QEvent,
   Function(..),
   SideEffect(..),
-  WholeState,
+  WholeMachine,
   )
 import Language.Smudge.Semantics.Model (TaggedName, disqualifyTag)
 import Language.Smudge.Parsers.Id (at)
@@ -37,7 +37,7 @@ qesOfSes :: [SideEffect TaggedName] -> [QEvent TaggedName]
 qesOfSes ses = [qe | (SideEffect (FuncEvent qe@(_, Event _)) _) <- ses]
 
 instance Passable DeclaredEventNames where
-    type Representation DeclaredEventNames = [(StateMachine TaggedName, [WholeState TaggedName])]
+    type Representation DeclaredEventNames = [WholeMachine TaggedName]
     accumulate (sm, wss) = mappend $ foldr go mempty wss
         where go (_, _, en, eh, ex) =
                 mappend $ DeclaredEventNames (fromList [(sm, e) | (e@(Event _), _, _) <- eh])

@@ -15,6 +15,7 @@ module Language.Smudge.Grammar (
     EventHandler,
     StateFlag(..),
     WholeState,
+    WholeMachine,
 ) where
 
 data Module a = Module String [StateMachine a]
@@ -47,3 +48,5 @@ data StateFlag = Initial
     deriving (Show, Eq, Ord)
 
 type WholeState a = (State a, [StateFlag], [SideEffect a], [EventHandler a], [SideEffect a])
+
+type WholeMachine a = (StateMachine a, [WholeState a])

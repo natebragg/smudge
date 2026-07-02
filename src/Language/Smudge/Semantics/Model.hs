@@ -43,7 +43,8 @@ import Language.Smudge.Grammar (
   Function(..),
   SideEffect(..),
   StateFlag(..),
-  WholeState
+  WholeState,
+  WholeMachine,
   )
 import Language.Smudge.Parsers.Id (
   Name,
@@ -163,12 +164,12 @@ events_for g = nub $ sort [e | (_, _, Happening {event=e@(Event _)}) <- labEdges
 states_for :: Gr EnterExitState Happening -> [State TaggedName]
 states_for g = [s | (_, EnterExitState {st=s@(State _)}) <- labNodes g]
 
-passInitialState :: [(StateMachine Identifier, [WholeState Identifier])] -> [(StateMachine Identifier, [WholeState Identifier])]
+passInitialState :: [WholeMachine Identifier] -> [WholeMachine Identifier]
 passInitialState sms = map (\(sm, wss) -> (sm, foldr init [] wss)) sms
     where init (s@(State q), fs, en, es, ex) wss | elem Initial fs = (StateEntry q, [], [], [(EventEnter, [], s)], []) : (s, filter (/= Initial) fs, en, es, ex) : wss
           init ws wss = ws : wss
 
-passConvertAnys :: [(StateMachine Identifier, [WholeState Identifier])] -> [(StateMachine Identifier, [WholeState Identifier])]
+passConvertAnys :: [WholeMachine Identifier] -> [WholeMachine Identifier]
 passConvertAnys = map $ fmap $ map conv_ws
     where conv_ws (st, fs, en, es, ex) = (conv_st st, fs, en, map conv_eh es, ex)
           conv_eh (ev, ses, s) = (conv_ev ev, ses, s)
@@ -193,7 +194,7 @@ instance Qualifiable (Event Identifier) where
 qQE :: StateMachine Identifier -> QEvent Identifier -> QualifiedName
 qQE sm (sm', ev) = qualify (pickSm sm sm', ev)
 
-passFullyQualify :: [(StateMachine Identifier, [WholeState Identifier])] -> [(StateMachine QualifiedName, [WholeState QualifiedName])]
+passFullyQualify :: [WholeMachine Identifier] -> [WholeMachine QualifiedName]
 passFullyQualify sms = map qual sms
     where qual (sm, wss) = (qual_sm sm, map qual_ws wss)
             where qual_sm = fmap qualify
@@ -206,7 +207,7 @@ passFullyQualify sms = map qual sms
                   qual_fn (FuncVoid   f) = FuncVoid  $ qualify f
                   qual_fn (FuncEvent qe) = FuncEvent $ qual_qe qe
 
-passRename :: Alias QualifiedName -> (QualifiedName -> QualifiedName) -> [(StateMachine QualifiedName, [WholeState QualifiedName])] -> [(StateMachine QualifiedName, [WholeState QualifiedName])]
+passRename :: Alias QualifiedName -> (QualifiedName -> QualifiedName) -> [WholeMachine QualifiedName] -> [WholeMachine QualifiedName]
 passRename aliases nsprefix sms = map ren sms
     where rename' = rename aliases . nsprefix
           ren (sm, wss) = (fmap rename' sm, map ren_ws wss)
@@ -217,7 +218,7 @@ passRename aliases nsprefix sms = map ren sms
           ren_fn (FuncVoid   f) = FuncVoid  $ rename' f
           ren_fn (FuncEvent qe) = FuncEvent $ ren_qe qe
 
-passTagCategories :: [(StateMachine QualifiedName, [WholeState QualifiedName])] -> [(StateMachine TaggedName, [WholeState TaggedName])]
+passTagCategories :: [WholeMachine QualifiedName] -> [WholeMachine TaggedName]
 passTagCategories sms = map tag sms
     where tag (sm, wss) = (fmap TagMachine sm, map tag_ws wss)
           tag_ws (st, fs, en, es, ex) = (fmap TagState st, fs, map tag_se en, map tag_eh es, map tag_se ex)
@@ -227,8 +228,7 @@ passTagCategories sms = map tag sms
           tag_fn (FuncVoid   f) = FuncVoid  $ TagFunction f
           tag_fn (FuncEvent qe) = FuncEvent $ tag_qe qe
 
-smToGraph :: (StateMachine TaggedName, [WholeState TaggedName]) ->
-                 Gr EnterExitState Happening
+smToGraph :: WholeMachine TaggedName -> Gr EnterExitState Happening
 smToGraph (sm, ss) = mkGraph eess es
     where
         ss' = zip [1..] ss
@@ -246,6 +246,6 @@ smToGraph (sm, ss) = mkGraph eess es
                     otherwise -> (Happening e ses [], s')
             in mkEdge n s'' e'
 
-passWholeStateToGraph :: [(StateMachine TaggedName, [WholeState TaggedName])] ->
+passWholeStateToGraph :: [WholeMachine TaggedName] ->
                             [(StateMachine TaggedName, Gr EnterExitState Happening)]
 passWholeStateToGraph sms = zip (map fst sms) (map smToGraph sms)

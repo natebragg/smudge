@@ -40,6 +40,7 @@ import Language.Smudge.Semantics.Operation (
 import Language.Smudge.Grammar (
   StateMachine,
   WholeState,
+  WholeMachine,
   Event(..),
   State(..),
   )
@@ -113,7 +114,7 @@ processFile fileName os = do
           prefix ((SystemOption (OutDir p)):_) = p
           prefix (_:t) = prefix t
 
-checkAndConvert :: [(StateMachine Identifier, [WholeState Identifier])] -> [Options] -> IO ([(StateMachine TaggedName, Gr EnterExitState Happening)], Alias QualifiedName, SymbolTable)
+checkAndConvert :: [WholeMachine Identifier] -> [Options] -> IO ([(StateMachine TaggedName, Gr EnterExitState Happening)], Alias QualifiedName, SymbolTable)
 checkAndConvert sms os = do
     mapM (putStrLn . (\(f, err) -> "Parse error in " ++ f ++ " flag: " ++ err)) flag_errors
     when (not $ null flag_errors) $ report_failure $ length flag_errors

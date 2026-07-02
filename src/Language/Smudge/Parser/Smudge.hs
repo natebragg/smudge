@@ -19,6 +19,7 @@ import Language.Smudge.Grammar (
     EventHandler,
     StateFlag(Initial),
     WholeState,
+    WholeMachine,
     )
 import Language.Smudge.Lexer.Token (
     TokenCat(..),
@@ -54,7 +55,7 @@ foreign_identifier :: Stream s m Token => ParsecT s u m Identifier
 foreign_identifier = identify <$> tok FID
 
 -- Smudge parsing
-smudge_file :: Stream s m Token => ParsecT s u m ([[String]], [(StateMachine Identifier, [WholeState Identifier])])
+smudge_file :: Stream s m Token => ParsecT s u m ([[String]], [WholeMachine Identifier])
 smudge_file = (,) <$> many pragma <*> smudgle
 
 -- Pragmas
@@ -63,11 +64,11 @@ pragma = (:) <$> (tok PRAGMA *> pure "--") <> (text <$> tok COMMAND)
              <*> option [] (pure <$> text <$> tok ARG)
 
 -- Module
-smudgle :: Stream s m Token => ParsecT s u m [(StateMachine Identifier, [WholeState Identifier])]
+smudgle :: Stream s m Token => ParsecT s u m [WholeMachine Identifier]
 smudgle = many1 state_machine_def
 
 -- Machine
-state_machine_def :: Stream s m Token => ParsecT s u m (StateMachine Identifier, [WholeState Identifier])
+state_machine_def :: Stream s m Token => ParsecT s u m (WholeMachine Identifier)
 state_machine_def = (,) <$> state_machine_name <*> state_machine
 
 state_machine_name :: Stream s m Token => ParsecT s u m (StateMachine Identifier)
