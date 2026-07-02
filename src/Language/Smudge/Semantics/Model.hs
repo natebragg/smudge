@@ -7,6 +7,9 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE DeriveTraversable #-}
+{-# LANGUAGE DeriveFoldable #-}
+{-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE LambdaCase #-}
 
 module Language.Smudge.Semantics.Model (
@@ -127,28 +130,7 @@ data Tagged a =
         | TagEvent a
         | TagFunction a
         | TagBuiltin a
-    deriving (Show, Eq, Ord)
-
-instance Functor Tagged where
-    fmap f (TagMachine x) = TagMachine $ f x
-    fmap f (TagState x) = TagState $ f x
-    fmap f (TagEvent x) = TagEvent $ f x
-    fmap f (TagFunction x) = TagFunction $ f x
-    fmap f (TagBuiltin x) = TagBuiltin $ f x
-
-instance Foldable Tagged where
-    foldMap f (TagMachine x) = f x
-    foldMap f (TagState x) = f x
-    foldMap f (TagEvent x) = f x
-    foldMap f (TagFunction x) = f x
-    foldMap f (TagBuiltin x) = f x
-
-instance Traversable Tagged where
-    traverse f (TagMachine x) = TagMachine <$> f x
-    traverse f (TagState x) = TagState <$> f x
-    traverse f (TagEvent x) = TagEvent <$> f x
-    traverse f (TagFunction x) = TagFunction <$> f x
-    traverse f (TagBuiltin x) = TagBuiltin <$> f x
+    deriving (Show, Eq, Ord, Functor, Foldable, Traversable)
 
 type TaggedName = Tagged QualifiedName
 
