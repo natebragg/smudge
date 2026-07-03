@@ -18,7 +18,7 @@ module Language.Smudge.Semantics.Ty (
 import Language.Smudge.Grammar (
     StateMachine(StateMachine),
     Event(Event, EventAny, EventEnter, EventExit),
-    State(State),
+    State(State, StateAny, StateEntry),
     Function(FuncVoid, FuncEvent),
     SideEffect(SideEffect),
     EventHandler,
@@ -258,8 +258,8 @@ instance Infer (WholeState TaggedName) where
                          let a = case eh_i of (Event a , _, _) -> Just a; _ -> Nothing
                              g_q_i = Map.singleton <$> flip (,) tau_i <$> a
                          return (c_i, g_q_i)
-           let q = case s of State q -> q; _ -> undefined
-           c_en <- flip foldMapM ens $ \d_i -> fst <$> infer sig gamma (EventEnter :: Event TaggedName, d_i)
+           let q = case s of State q -> q; StateAny q -> q; StateEntry q -> q
+           c_en <- flip foldMapM ens $ \d_i -> fst <$> infer sig gamma (EventEnter q, d_i)
            c_ex <- flip foldMapM exs $ \d_i -> fst <$> infer sig gamma (EventExit  q, d_i)
            let ty = Variant Nothing $ fromMaybe Map.empty g_q
            return (c_en <> c <> c_ex, ty)

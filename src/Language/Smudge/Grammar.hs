@@ -26,7 +26,7 @@ data StateMachine a = StateMachine a | StateMachineSame
 data State a = State a | StateAny a | StateSame | StateEntry a
     deriving (Show, Eq, Ord, Functor)
 
-data Event a = Event a | EventAny a | EventEnter | EventExit a
+data Event a = Event a | EventAny a | EventEnter a | EventExit a
     deriving (Show, Eq, Ord, Functor)
 
 type QEvent a = (StateMachine a, Event a)

@@ -263,7 +263,7 @@ sName (StateAny s)  = qualify (fromJust $ machineOf s, "ANY_STATE")
 
 mangleEv :: Event TaggedName -> QualifiedName
 mangleEv (Event evName) = extractWith seq qualify $ qualify evName
-mangleEv EventEnter = qualify "enter"
+mangleEv (EventEnter _) = qualify "enter"
 mangleEv (EventExit _) = qualify "exit"
 mangleEv (EventAny _) = qualify "any"
 
@@ -342,8 +342,8 @@ lowerMachine cfg ssyms (StateMachine smName, g') = map (markUnused . boundArgs) 
         syms = lowerSolverSyms ssyms
         g = insEdges ([(n, n, Happening (EventExit q) ex [NoTransition])
                        | (n, EnterExitState {st = State q, ex = ex@(_:_)}) <- labNodes $ delNodes (finalStates g' ++ [n | n <- nodes g', (_, _, Happening (EventExit _) _ _) <- out g' n]) g'] ++
-                      [(n, n, Happening EventEnter en [NoTransition])
-                       | (n, EnterExitState {en, st = State _}) <- labNodes $ delNodes [n | n <- nodes g', (_, _, Happening EventEnter _ _) <- out g' n] g']) g'
+                      [(n, n, Happening (EventEnter q) en [NoTransition])
+                       | (n, EnterExitState {en, st = State q}) <- labNodes $ delNodes [n | n <- nodes g', (_, _, Happening (EventEnter _) _ _) <- out g' n] g']) g'
         notShadowing x = not $ x `elem` map qualify (keys syms)
         eventNames = filter notShadowing $ map qualify $ ["e"] ++ map (('e':) . show) [2..]
         char = TagBuiltin $ qualify "char"
@@ -463,7 +463,8 @@ lowerMachine cfg ssyms (StateMachine smName, g') = map (markUnused . boundArgs) 
                               (Event t) -> Ty t :-> Void
                               otherwise -> Void :-> Void
 
-                  logAState = if not $ event h == EventEnter && st `member` logState cfg then []
+                  hIsEnter = case event h of EventEnter _ -> True; _ -> False
+                  logAState = if not $ hIsEnter && st `member` logState cfg then []
                               else call_print_f [Literal format_s, FunCall stateName_f [Value $ Var stateVar], Literal ""]
                   format_s = disqualifyTag smName ++ "{%s}: Entering state\n"
 

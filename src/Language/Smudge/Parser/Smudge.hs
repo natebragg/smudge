@@ -85,10 +85,10 @@ state_machine_body = state_def `sepEndBy1` tok COMMA
 state_def :: Stream s m Token => ParsecT s u m (WholeState Identifier)
 state_def = do
     start <- option [] (tok START *> pure [Initial])
-    name  <- state_name
-    (en, ehs, ex) <- (arrow >>= \(ses, s) -> return ([], [(EventEnter, ses, s)], []))
+    name  <- identifier
+    (en, ehs, ex) <- (arrow >>= \(ses, s) -> return ([], [(EventEnter name, ses, s)], []))
                      <|> (,,) <$> enter_exit <*> state <*> enter_exit
-    return (name, start, en, ehs, ex)
+    return (State name, start, en, ehs, ex)
 
 state_name :: Stream s m Token => ParsecT s u m (State Identifier)
 state_name = State <$> identifier

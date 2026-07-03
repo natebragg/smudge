@@ -110,7 +110,7 @@ finalStates g = nodes g \\
     where
         ahs = allHandlers g
         states = labNodes g
-        canTransition EventEnter = True
+        canTransition (EventEnter _) = True
         canTransition (Event _) = True
         canTransition _ = False
 
@@ -172,12 +172,12 @@ basicBlocks g = foldMapWithKey (\event -> foldMapWithKey (\state _ -> case (stat
 
           transients :: (StepState, StepState) -> (StepState, StepState)
           transients stepstate@(_, prev@(StepState path s q q' visited)) = case out g $ fst $ head $ onlyState s of
-            [(_, n', Happening {event=EventEnter, sideEffects})] -> case Map.lookup (s, EventEnter) visited of
+            [(_, n', Happening {event=e@(EventEnter _), sideEffects})] -> case Map.lookup (s, e) visited of
                 Just (s', q'') -> transients $ (prev, prev {state = s', queue' = q' >< q''})
                 Nothing -> transients $ clone $ prev {state = s', queue = q >< q' >< q'', queue' = mempty, visited = visited'}
                     where Just (EnterExitState {st=s', en}) = lab g n'
                           q'' = fromList $ map seFn $ sideEffects ++ en
-                          visited' = insert (s, EventEnter) (s', q'') visited
+                          visited' = insert (s, e) (s', q'') visited
             otherwise -> stepstate
 
           step :: (StepState, StepState) -> (StepState, StepState)

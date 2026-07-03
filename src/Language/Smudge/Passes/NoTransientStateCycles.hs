@@ -39,4 +39,4 @@ instance (Graph gr) => Passable (NoTransientStateCycles gr) where
 
 tfilter :: (Graph gr) => Context EnterExitState Happening -> NoTransientStateCycles gr -> NoTransientStateCycles gr
 tfilter (i, n, l, o) (NoTransientStateCycles a) = NoTransientStateCycles ((efs i, n, l, efs o) & a)
-    where efs es = [e | e@(Happening EventEnter _ _, _) <- es]
+    where efs es = [e | e@(Happening (EventEnter _) _ _, _) <- es]

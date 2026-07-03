@@ -166,7 +166,7 @@ states_for g = [s | (_, EnterExitState {st=s@(State _)}) <- labNodes g]
 
 passInitialState :: [WholeMachine Identifier] -> [WholeMachine Identifier]
 passInitialState sms = map (\(sm, wss) -> (sm, foldr init [] wss)) sms
-    where init (s@(State q), fs, en, es, ex) wss | elem Initial fs = (StateEntry q, [], [], [(EventEnter, [], s)], []) : (s, filter (/= Initial) fs, en, es, ex) : wss
+    where init (s@(State q), fs, en, es, ex) wss | elem Initial fs = (StateEntry q, [], [], [(EventEnter q, [], s)], []) : (s, filter (/= Initial) fs, en, es, ex) : wss
           init ws wss = ws : wss
 
 passConvertAnys :: [WholeMachine Identifier] -> [WholeMachine Identifier]
@@ -218,15 +218,33 @@ passRename aliases nsprefix sms = map ren sms
           ren_fn (FuncVoid   f) = FuncVoid  $ rename' f
           ren_fn (FuncEvent qe) = FuncEvent $ ren_qe qe
 
+class Taggable f where
+    tag :: f QualifiedName -> f TaggedName
+
+instance Taggable StateMachine where
+    tag sm = fmap TagMachine sm
+
+instance Taggable State where
+    tag q = fmap TagState q
+
+instance Taggable Event where
+    tag (Event a)      = Event      $ TagEvent a
+    tag (EventAny a)   = EventAny   $ TagEvent a
+    tag (EventEnter q) = EventEnter $ TagState q
+    tag (EventExit q)  = EventExit  $ TagState q
+
+instance Taggable Function where
+    tag (FuncVoid f)        = FuncVoid $ TagFunction f
+    tag (FuncEvent (sm, e)) = FuncEvent (tag sm, tag e)
+
+instance Taggable SideEffect where
+    tag (SideEffect f as) = SideEffect (tag f) (map tag as)
+
 passTagCategories :: [WholeMachine QualifiedName] -> [WholeMachine TaggedName]
-passTagCategories sms = map tag sms
-    where tag (sm, wss) = (fmap TagMachine sm, map tag_ws wss)
-          tag_ws (st, fs, en, es, ex) = (fmap TagState st, fs, map tag_se en, map tag_eh es, map tag_se ex)
-          tag_eh (ev, ses, s) = (fmap TagEvent ev, map tag_se ses, fmap TagState s)
-          tag_qe (sm', ev) = (fmap TagMachine sm', fmap TagEvent ev)
-          tag_se (SideEffect f args) = SideEffect (tag_fn f) (map tag_fn args)
-          tag_fn (FuncVoid   f) = FuncVoid  $ TagFunction f
-          tag_fn (FuncEvent qe) = FuncEvent $ tag_qe qe
+passTagCategories sms = map tag_wm sms
+    where tag_wm (sm, wss) = (tag sm, map tag_ws wss)
+          tag_ws (st, fs, en, es, ex) = (tag st, fs, map tag en, map tag_eh es, map tag ex)
+          tag_eh (ev, ses, s) = (tag ev, map tag ses, tag s)
 
 smToGraph :: WholeMachine TaggedName -> Gr EnterExitState Happening
 smToGraph (sm, ss) = mkGraph eess es
