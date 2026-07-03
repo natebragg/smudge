@@ -45,7 +45,6 @@ library
                      Language.Smudge.Passes.OneEventHandlerPerState
                      Language.Smudge.Passes.OneInitialState
                      Language.Smudge.Passes.Passes
-                     Language.Smudge.Passes.UninstantiableTypes
                      Language.Smudge.Passes.UniqueStateNames
                      Language.Smudge.Semantics.Alias
                      Language.Smudge.Semantics.Basis

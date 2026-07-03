@@ -293,7 +293,6 @@ lowerTy :: Solver.Ty -> Ty QualifiedName
 lowerTy      Solver.Void  = Void
 lowerTy     (Solver.Ty x) = Ty x
 lowerTy (t Solver.:-> t') = lowerTy t :-> lowerTy t'
-lowerTy                 t = error $ "Tried to lower '" ++ show t ++ "'.  This is a bug in smudge.\n"
 
 lowerSolverSyms :: SymbolTable -> Map TaggedName (Binding, Ty QualifiedName)
 lowerSolverSyms = afold (uncurry insert . second (second lowerTy)) empty

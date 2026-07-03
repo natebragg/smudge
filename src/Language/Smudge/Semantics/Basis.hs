@@ -1,17 +1,18 @@
--- Copyright 2018 Bose Corporation.
+-- Copyright 2026 Nate Bragg.
 -- This software is released under the 3-Clause BSD License.
 -- The license can be viewed at https://github.com/smudgelang/smudge/blob/master/LICENSE
 
 module Language.Smudge.Semantics.Basis (
     basisAlias,
-    bindBasis,
+    machineExports,
+    machineExternals,
+    basis,
 ) where
 
-import Language.Smudge.Semantics.Solver (
-  SymbolTable,
-  Binding(..),
-  insertFunctions,
-  )
+import Language.Smudge.Semantics.Ty (
+    Ty(Ty, Product, Cap, (:->)),
+    SymbolTable(..)
+    )
 import Language.Smudge.Semantics.Model (
   QualifiedName,
   qualify,
@@ -19,12 +20,9 @@ import Language.Smudge.Semantics.Model (
   Tagged(..),
   )
 import Language.Smudge.Semantics.Alias (Alias, rename)
-import Language.Smudge.Grammar (
-  StateMachine(..),
-  )
 
 import Data.Map (fromList)
-import Data.Semigroup (Semigroup(..))
+import qualified Data.Map.Ordered as OMap(fromList)
 
 basisAlias :: String -> Alias QualifiedName
 basisAlias "" = mempty
@@ -36,24 +34,32 @@ basisAlias namespace = fromList $ map q [
             "panic"]
     where q n = (qualify n, qualify(namespace, n))
 
-bindBasis :: Alias QualifiedName -> [StateMachine QualifiedName] -> SymbolTable
-bindBasis aliases sms = exports <> externs
-    where rename' = rename aliases . qualify
-          void = TagBuiltin $ qualify "void"
-          str = TagBuiltin $ qualify "char"
-          wrapper smName = TagState $ qualify (smName, "Event_Wrapper") -- a horrible kludge
-          exports = insertFunctions mempty Exported $ concat [[
+wrapper :: TaggedName -> Ty
+wrapper m = Ty $ TagState $ qualify (m, "Event_Wrapper")
+
+machineExports :: TaggedName -> [(TaggedName, Ty)]
+machineExports m = runtime
+    where str = Ty $ TagBuiltin $ qualify "char"
+          runtime = [
             -- add more sm-specific exports here
-            (qualify (smName, "Free_Message"),       ([wrapper smName], "")),
-            (qualify (smName, "Handle_Message"),     ([wrapper smName], "")),
-            (qualify (smName, "Current_state_name"), ([], "char"))]
-                | StateMachine smName <- sms]
-          externs = insertFunctions mempty External $ concat [[
+            (TagFunction $ qualify (m, "Free_Message"),       Product [wrapper m] :-> Cap Nothing mempty),
+            (TagFunction $ qualify (m, "Handle_Message"),     Product [wrapper m] :-> Cap Nothing mempty),
+            (TagFunction $ qualify (m, "Current_state_name"), Product [] :-> str)]
+
+machineExternals :: TaggedName -> [(TaggedName, Ty)]
+machineExternals m = runtime
+    where runtime = [
             -- add more sm-specific externals here
-            (qualify (smName, "Send_Message"), ([wrapper smName], ""))]
-                | StateMachine smName <- sms] ++ [
+            (TagFunction $ qualify (m, "Send_Message"),       Product [wrapper m] :-> Cap Nothing mempty)]
+
+basis :: Alias QualifiedName -> SymbolTable
+basis aliases = runtime
+    where rename' = rename aliases . qualify
+          void = Ty $ TagBuiltin $ qualify "void"
+          str = Ty $ TagBuiltin $ qualify "char"
+          runtime = SymbolTable $ OMap.fromList [
             -- add more smudge-wide externals here
-            (rename' "debug_print", ([str, str, str], "")),
-            (rename' "free",        ([void], "")),
-            (rename' "panic_print", ([str, str, str], "")),
-            (rename' "panic",       ([], ""))]
+            (TagFunction $ rename' "debug_print", Product [str, str, str] :-> Cap Nothing mempty),
+            (TagFunction $ rename' "free",        Product [void] :-> Cap Nothing mempty),
+            (TagFunction $ rename' "panic_print", Product [str, str, str] :-> Cap Nothing mempty),
+            (TagFunction $ rename' "panic",       Product [] :-> Cap Nothing mempty)]

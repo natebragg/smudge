@@ -6,14 +6,12 @@ module Language.Smudge.Passes (
     make_passes,
     name_passes,
     link_passes,
-    type_passes,
     term_passes,
 ) where
 
 import Language.Smudge.Grammar (State, Event)
 import Language.Smudge.Semantics.Model (EnterExitState, Happening, TaggedName)
 import Language.Smudge.Semantics.Operation (BasicBlock)
-import Language.Smudge.Semantics.Solver (SymbolTable)
 import Language.Smudge.Grammar (StateMachine, WholeMachine)
 import Language.Smudge.Passes.Passes (pass, Fault)
 import Language.Smudge.Passes.NoAnyEnterExit (NoAnyEnterExit)
@@ -28,7 +26,6 @@ import Language.Smudge.Passes.OneEventHandlerPerState (OneEventHandlerPerState)
 import Language.Smudge.Passes.OneInitialState (OneInitialState)
 import Language.Smudge.Passes.DeclaredStateNames (DeclaredStateNames)
 import Language.Smudge.Passes.DeclaredEventNames (DeclaredEventNames)
-import Language.Smudge.Passes.UninstantiableTypes (UninstantiableTypes)
 
 import Data.Graph.Inductive.Graph (Graph)
 
@@ -47,9 +44,6 @@ name_passes sm = concat [pass sm (undefined :: NoTargetAnyStates),
 
 link_passes :: (StateMachine TaggedName, [WholeMachine TaggedName]) -> [Fault]
 link_passes sms = concat [pass sms (undefined :: DeclaredEventNames)]
-
-type_passes :: (StateMachine TaggedName, SymbolTable) -> [Fault]
-type_passes st = concat [pass st (undefined :: UninstantiableTypes)]
 
 term_passes :: (StateMachine TaggedName, [((State TaggedName, Event TaggedName), BasicBlock)]) -> [Fault]
 term_passes bs = concat [pass bs (undefined :: NoDecidableNontermination),

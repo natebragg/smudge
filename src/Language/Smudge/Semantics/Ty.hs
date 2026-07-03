@@ -27,7 +27,9 @@ import Language.Smudge.Grammar (
 import Language.Smudge.Semantics.Model (
     machineOf,
     TaggedName,
+    qualify,
     )
+import Language.Smudge.Parsers.Id (Declared(..))
 
 import Data.List (intercalate)
 import Data.Set (Set, difference)
@@ -131,10 +133,10 @@ prettyField :: (TaggedName, Ty) -> String
 prettyField (x, tau) = show x ++ ": " ++ pretty tau
 
 prettyCap :: Capability -> String
-prettyCap (Eventful x) = "eventful " ++ show x
-prettyCap (Wildcard x) = "wildcard " ++ show x
-prettyCap (Entering x) = "entering " ++ show x
-prettyCap (Exiting  x) = "exiting "  ++ show x
+prettyCap (Eventful x) = "eventful " ++ show (qualify x)
+prettyCap (Wildcard x) = "wildcard " ++ show (qualify x)
+prettyCap (Entering x) = "entering " ++ show (qualify x)
+prettyCap (Exiting  x) = "exiting "  ++ show (qualify x)
 
 pretty :: Ty -> String
 pretty (Tyvar tau x) = x ++ case tau of Nothing -> ""; Just tau -> "^(" ++ pretty tau ++ "?)"
@@ -234,7 +236,7 @@ elaborate res (SymbolTable gamma) ms =
            tau    <- lift $ close $ subst theta tau
            let (Record gamma_tau) = tau
                gamma'' = disjUnion gamma' gamma_tau
-           SymbolTable <$> lift (resolve res gamma'' gamma'')
+           SymbolTable <$> lift (resolve res gamma'' [] gamma'')
 
 class Infer x where
     infer :: (Num i, Show i, MonadState i m) => Env -> Env -> x -> m (Constraint, Ty)
@@ -423,14 +425,16 @@ data Resolution = Strict | Permissive | Passthrough
     deriving (Show, Eq)
 
 class Resolve a where
-    resolve :: Resolution -> Env -> a -> Except TypeError a
+    resolve :: Resolution -> Env -> [TaggedName] -> a -> Except TypeError a
 
 instance Resolve Caps where
-    resolve r g = fmap dropEnEx . collapse r . mconcat . map resWild . toListC
+    resolve r g (f:_) = fmap dropEnEx . collapse r . mconcat . map resWild . toListC
         where collapse :: Resolution -> Caps -> Except TypeError Caps
               collapse Passthrough cs         = return cs
               collapse _ cs | lengthC cs <= 1 = return cs
-              collapse Strict (Caps cs)       = throwError $ "Could not strictly resolve function used in multiple contexts:\n    " ++ show cs ++ "\n"
+              collapse Strict (Caps cs)       = throwError $ "ERROR at " ++ show (at f) ++ ":\n" ++
+                                                             "  Could not strictly resolve type of " ++ show (qualify f) ++ ", which is used in multiple contexts:\n" ++
+                                                             "    " ++ intercalate ", " (map prettyCap $ toList cs) ++ "\n"
               collapse Permissive _           = return mempty
               resWild (Wildcard x) = fromListC $ map Eventful $ keys g'
                 where Just (Variant _ g') = Map.lookup m g
@@ -439,13 +443,16 @@ instance Resolve Caps where
               dropEnEx = Caps . Set.filter isEventful . uncaps
 
 instance Resolve Ty where
-    resolve _ _ tau@(Tyvar _ _)   = return tau
-    resolve _ _ tau@(Ty _)        = return tau
-    resolve r g (Cap p cs)        = Cap p <$> resolve r g cs
-    resolve r g (tau1 :-> tau2)   = (:->) <$> resolve r g tau1 <*> resolve r g tau2
-    resolve r g (Product taus)    = Product <$> resolve r g taus
-    resolve r g (Record gamma)    = Record <$> resolve r g gamma
-    resolve r g (Variant _ gamma) = Variant Nothing <$> resolve r g gamma
+    resolve _ _   _ tau@(Tyvar _ _)   = return tau
+    resolve _ _   _ tau@(Ty _)        = return tau
+    resolve r g ctx (Cap p cs)        = Cap p <$> resolve r g ctx cs
+    resolve r g ctx (tau1 :-> tau2)   = (:->) <$> resolve r g ctx tau1 <*> resolve r g ctx tau2
+    resolve r g ctx (Product taus)    = Product <$> resolve r g ctx taus
+    resolve r g ctx (Record gamma)    = Record <$> resolve r g ctx gamma
+    resolve r g ctx (Variant _ gamma) = Variant Nothing <$> resolve r g ctx gamma
 
-instance (Traversable t, Resolve v) => Resolve (t v) where
-    resolve r = traverse . resolve r
+instance Resolve v => Resolve [v] where
+    resolve r g = traverse . resolve r g
+
+instance Resolve Env where
+    resolve r g ctx m = Map.fromList <$> traverse (\(k, tau) -> (,) k <$> resolve r g (k:ctx) tau) (assocs m)

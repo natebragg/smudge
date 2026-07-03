@@ -46,30 +46,29 @@ import Language.Smudge.Grammar (
   )
 import Language.Smudge.Semantics.Solver (
   SymbolTable,
-  elaborateMono,
-  elaboratePoly,
+  adaptTable
   )
 import Language.Smudge.Semantics.Ty (
   Resolution(Strict, Permissive, Passthrough),
+  elaborate
   )
 import qualified Language.Smudge.Parser.Smudge as Parser (smudge_file)
 import qualified Language.Smudge.Lexer.Smudge as Lexer (smudge_file)
 import Language.Smudge.Lexer.Token (stripWhitespace)
 import Language.Smudge.Parsers.Id (Identifier)
 import Language.Smudge.Semantics.Alias (Alias, merge)
-import Language.Smudge.Semantics.Basis (basisAlias, bindBasis)
+import Language.Smudge.Semantics.Basis (basis, basisAlias)
 import Language.Smudge.Passes.Passes (Severity(..), Fault(..), fatal)
 import Language.Smudge.Passes (
   make_passes,
   name_passes,
   link_passes,
-  type_passes,
   term_passes,
   )
 import Data.Graph.Extra
 
 import Control.Monad (when)
-import Control.Monad.Trans.Except (runExceptT)
+import Control.Monad.Except (runExcept, runExceptT)
 import Control.Arrow (second)
 import Control.Applicative ((<$>), (<*>))
 import Text.Parsec (parse, eof)
@@ -142,15 +141,9 @@ checkAndConvert sms os = do
             mapM print fs
             when (any fatal fs) $ report_failure $ length fs
 
-            let basis = bindBasis aliases $ map fst sms''
-            let st = if capRes == Strict
-                     then elaborateMono basis sms'''
-                     else elaboratePoly basis sms'''
-            -- This is a bit of a hack around the definition of Passable
-            let types = zip (map fst sms''') [st]
-            let fs = concat $ map type_passes types
-            mapM print fs
-            when (any fatal fs) $ report_failure $ length fs
+            st <- case runExcept (elaborate capRes (basis aliases) sms''') of
+                    Left err  -> putStr err >> report_failure 1
+                    Right st' -> print (adaptTable st') >> return (adaptTable st')
 
             let gs = passWholeStateToGraph sms'''
             let fs = concat $ map make_passes gs

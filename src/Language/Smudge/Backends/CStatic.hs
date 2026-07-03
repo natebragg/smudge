@@ -44,7 +44,6 @@ import Language.Smudge.Passes.Passes (
 import Language.Smudge.Semantics.Solver (
   Binding(..),
   filterBind,
-  (!),
   )
 import Language.Smudge.Parsers.Id (
   rawtest,

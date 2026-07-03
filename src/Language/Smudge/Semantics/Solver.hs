@@ -1,67 +1,47 @@
--- Copyright 2018 Bose Corporation.
+-- Copyright 2026 Nate Bragg.
 -- This software is released under the 3-Clause BSD License.
 -- The license can be viewed at https://github.com/smudgelang/smudge/blob/master/LICENSE
 
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE TypeFamilies #-}
 
 module Language.Smudge.Semantics.Solver (
     Ty(Void, Ty, (:->)),
     Binding(..),
-    resultOf,
-    instantiable,
+    adaptTable,
 
-    SymbolTable,
-    insertFunctions,
-    toList,
+    SymbolTable(..),
     filterBind,
-    (!),
-
-    elaborateMono,
-    elaboratePoly,
 ) where
 
-import Language.Smudge.Grammar (
-  StateMachine,
-  Event(..),
-  Function(..), fnName,
-  SideEffect(..),
-  EventHandler,
-  WholeState
-  )
 import Language.Smudge.Semantics.Model (
-  qualify,
-  QualifiedName,
-  TaggedName,
-  Tagged(..),
-  )
-import Language.Smudge.Parsers.Id (Name)
+    qualify,
+    TaggedName,
+    Tagged(..),
+    )
+import Language.Smudge.Semantics.Basis (
+    machineExports,
+    machineExternals
+    )
+import qualified Language.Smudge.Semantics.Ty as T (
+    Capability(..),
+    uncaps,
+    Ty(..),
+    SymbolTable(..)
+    )
 import Language.Smudge.Passes.Passes (AbstractFoldable(..))
 
-import Data.Map (Map, mapWithKey, foldrWithKey, unionWith, findWithDefault, member)
-import qualified Data.Map as Map(map, filter, null, empty, singleton, insert, union, partition, toList, (!))
-import Data.Set (Set, elems, empty, singleton, insert, union, intersection, partition, findMin, minView)
-import qualified Data.Set as Set(map, filter, null, size)
-import Data.List (intercalate)
-import Data.Char (ord, chr)
-import Data.Semigroup (Semigroup(..))
-import Control.Monad.State (State, evalState, get, put)
-import Control.Monad (foldM)
-import Control.Arrow (first, second, (***), (>>>))
+import Data.Map (Map, fromList, foldrWithKey)
+import qualified Data.Map as Map(filter)
+import qualified Data.Map.Ordered as OMap(assocs)
+import qualified Data.Set as Set(empty, singleton, union, foldr)
+import Data.Foldable (toList)
 
--- external interface
 data Binding = External | Unresolved | Exported | Internal
     deriving (Show, Eq, Ord)
 
-data Ty =
-        -- instantiable types
-          Void
+data Ty = Void
         | Ty TaggedName
         | Ty :-> Ty
-
-        -- non-instantiable types
-        | Tyvar String
-        | Tyset (Set Ty)
     deriving (Eq, Ord)
 
 instance Show Ty where
@@ -70,280 +50,32 @@ instance Show Ty where
               go _ (Ty n) = show $ qualify n
               go True (tau :-> tau') = "(" ++ go True tau ++ " -> " ++ show tau' ++ ")"
               go False (tau :-> tau') = go True tau ++ " -> " ++ show tau'
-              go _ (Tyvar n) = n
-              go _ (Tyset tys) = "{" ++ intercalate ", " (map show (elems tys)) ++ "}"
 
 infixr 7 :->
 
-resultOf :: Ty -> Ty
-resultOf (_ :-> tau') = resultOf tau'
-resultOf tau = tau
-
-instantiable :: Ty -> Bool
-instantiable      Void  = True
-instantiable     (Ty _) = True
-instantiable (t :-> t') = instantiable t && instantiable t'
-instantiable         _  = False
-
-newtype SymbolTable = SymbolTable SymTab
-    deriving (Show, Eq, Ord, Semigroup, Monoid)
+newtype SymbolTable = SymbolTable (Map TaggedName (Binding, Ty))
+    deriving (Show, Eq, Ord)
 
 instance AbstractFoldable SymbolTable where
     type FoldContext SymbolTable = (TaggedName, (Binding, Ty))
     afold f a (SymbolTable gamma) = foldrWithKey (curry f) a gamma
 
-elaborateMono :: SymbolTable -> [(StateMachine TaggedName, [(WholeState TaggedName)])] -> SymbolTable
-elaborateMono (SymbolTable gamma) = SymbolTable . canonicalizeTabMono . defModule gamma
-
-elaboratePoly :: SymbolTable -> [(StateMachine TaggedName, [(WholeState TaggedName)])] -> SymbolTable
-elaboratePoly (SymbolTable gamma) = SymbolTable . canonicalizeTabPoly . defModule gamma
-
-makeFun :: [Ty] -> Ty -> Ty
-makeFun [] rty = Void :-> rty
-makeFun [pty] rty = pty :-> rty
-makeFun (pty:ptys) rty = pty :-> makeFun ptys rty
-
-insertFunctions :: SymbolTable -> Binding -> [(QualifiedName, ([TaggedName], Name))] -> SymbolTable
-insertFunctions (SymbolTable gamma) b fs =
-    SymbolTable $ canonicalizeTabPoly $ mapWithKey ((*** instantiate theta) . rebind btheta) gamma'
-    where gamma' = evalState (foldM defName gamma $ map fst fs') 0  -- BUG: 0 is probably wrong
-          fs' = map (TagFunction *** funTy) fs
-          funTy = map Ty *** makeTy >>> uncurry makeFun
-          makeTy "" = Void
-          makeTy ty = Ty $ TagBuiltin $ qualify ty
-          (btheta, theta) = solve $ conjoin [(b :@ n :/\ ty :<: gamma' !> n) | (n, ty) <- fs']
-
-toList :: SymbolTable -> [(TaggedName, (Binding, Ty))]
-toList (SymbolTable gamma) = Map.toList gamma
-
 filterBind :: SymbolTable -> Binding -> SymbolTable
 filterBind (SymbolTable gamma) b = SymbolTable $ Map.filter (\(b', _) -> b == b') gamma
 
-(!) :: SymbolTable -> TaggedName -> (Binding, Ty)
-(SymbolTable gamma) ! name = gamma Map.! name
-
--- internal implementation
-type SymTab = Map TaggedName (Binding, Ty)
-
-data Constraint = Ty :<: Ty
-                | Binding :@ TaggedName
-                | Constraint :/\ Constraint
-                | Trivial
-    deriving (Show, Eq, Ord)
-
-infixl 5 :@
-infixl 5 :<:
-infixl 4 :/\
-
-conjoin :: [Constraint] -> Constraint
-conjoin [] = Trivial
-conjoin [c] = c
-conjoin (c:cs) = c :/\ conjoin cs
-
-typefor :: TaggedName -> Ty
-typefor = Ty
-
-fresh :: State Int Ty
-fresh = do n <- get
-           put (n + 1)
-           return $ Tyvar $ vname n
-    where vname n = if   n <= ord 'z' - ord 'a'
-                    then [chr $ ord 'a' + n]
-                    else 'a' : show n
-
-(!>) :: SymTab -> TaggedName -> Ty
-gamma !> x = snd $ gamma Map.! x
-
--- definition rules
-defModule :: SymTab -> [(StateMachine TaggedName, [(WholeState TaggedName)])] -> SymTab
-defModule gamma ms = mapWithKey ((*** instantiate theta) . rebind btheta) gammaN
-    where gammaN = evalState (foldM defMachine gamma ms) 0
-          c      = conjoin $ map (inferMachine gammaN) ms
-          (btheta, theta) = second subst $ solve c
-
-defMachine :: SymTab -> (StateMachine TaggedName, [(WholeState TaggedName)]) -> State Int SymTab
-defMachine gamma (_, qs) = foldM defState gamma qs
-
-defState :: SymTab -> WholeState TaggedName -> State Int SymTab
-defState gamma (_, _, en, eh, ex) =
-    do gamma'   <-       defEvent gamma   (EventEnter undefined, en, undefined)
-       gamma''  <- foldM defEvent gamma'  eh
-       gamma''' <-       defEvent gamma'' (EventExit  undefined, ex, undefined)
-       return gamma'''
-
-retag (TagEvent n) = TagFunction n
-retag x = x
-
-defEvent :: SymTab -> EventHandler TaggedName -> State Int SymTab
-defEvent gamma (Event x_a, ds, _) =
-    do gamma'   <- defName gamma x_a
-       gamma''  <- defName gamma' $ retag x_a
-       gamma''' <- foldM defSE gamma'' ds
-       return gamma'''
-defEvent gamma (_, ds, _) = foldM defSE gamma ds
-
-defSE :: SymTab -> SideEffect TaggedName -> State Int SymTab
-defSE gamma (SideEffect f args) =
-    do gamma' <- defFun gamma f
-       foldM defFun gamma' args
-
-defFun :: SymTab -> Function TaggedName -> State Int SymTab
-defFun gamma (FuncVoid f) = defName gamma f
-defFun gamma (FuncEvent (_, Event x_a')) =
-    do gamma'  <- defName gamma x_a'
-       gamma'' <- defName gamma' (retag x_a')
-       return gamma''
-
-defName :: SymTab -> TaggedName -> State Int SymTab
-defName gamma x = if member x gamma
-                     then return gamma
-                     else do alpha <- fresh
-                             return $ Map.insert x (Unresolved, alpha) gamma
-
--- constraint rules
-inferMachine :: SymTab -> (StateMachine TaggedName, [(WholeState TaggedName)]) -> Constraint
-inferMachine gamma (_, qs) = conjoin $ map (inferState gamma) qs
-
-inferState :: SymTab -> WholeState TaggedName -> Constraint
-inferState gamma (_, _, en, eh, ex) = c_n :/\ c_h :/\ c_x
-    where c_n = inferEvent gamma (EventEnter undefined, en, undefined)
-          c_h = conjoin $ map (inferEvent gamma) eh
-          c_x = inferEvent gamma (EventExit  undefined, ex, undefined)
-
-inferEvent :: SymTab -> EventHandler TaggedName -> Constraint
-inferEvent gamma (Event x_a, ds, _) =
-    Exported :@ x_a :/\ Exported :@ x_d
-                    :/\ typefor x_a :<: tau_a
-                    :/\ tau_a :-> Void :<: tau_d
-                    :/\ conjoin (map (inferSE gamma [tau_a]) ds)
-    where tau_a = gamma !> x_a
-          tau_d = gamma !> x_d
-          x_d = retag x_a
-inferEvent gamma (        _, ds, _) = c
-    where c = conjoin $ map (inferSE gamma []) ds
-
-inferSE :: SymTab -> [Ty] -> SideEffect TaggedName -> Constraint
-inferSE gamma tau_e (SideEffect f args) =
-    inferFun gamma tau_e tau_args f :/\ conjoin (map (inferFun gamma tau_e []) args)
-    where tau_args = map ((gamma !>) . retag . fnName) args
-
-inferFun :: SymTab -> [Ty] -> [Ty] -> Function TaggedName -> Constraint
-inferFun gamma tau_e taus (FuncVoid x_d) =
-    External :@ x_d :/\ makeFun (tau_e ++ taus) Void :<: tau_d
-    where tau_d = gamma !> x_d
-inferFun gamma _ _ (FuncEvent (_, Event x_a)) =
-    tau_a :-> Void :<: tau_d :/\ typefor x_a :<: tau_a
-    where tau_a = gamma !> x_a
-          tau_d = gamma !> x_d
-          x_d = retag x_a
-
--- subtyping rules
-leastUpperBound :: Set Ty -> Set Ty
-leastUpperBound = boundWith join
-
-greatestLowerBound :: Set Ty -> Set Ty
-greatestLowerBound = boundWith meet
-
-boundWith :: (Ty -> Ty -> Ty) -> Set Ty -> Set Ty
-boundWith op s =
-    let isFun (_ :-> _) = True
-        isFun         _ = False
-    in  case first minView $ partition isFun s of
-        (Nothing, s')      -> s'
-        (Just (f, fs), s') -> insert (foldr op f fs) s'
-
-join :: Ty -> Ty -> Ty
-(t :-> t')   `join` (t'' :-> t''') = t'' `meet` t :-> t' `join` t'''
-(Tyset taus) `join` (Tyset taus')  = Tyset $ leastUpperBound $ union taus taus'
-(Tyset taus) `join` tau            = Tyset taus            `join` Tyset (singleton tau)
-tau          `join` (Tyset taus)   = Tyset (singleton tau) `join` Tyset taus
-tau          `join` tau'           = Tyset (singleton tau) `join` Tyset (singleton tau')
-
-meet :: Ty -> Ty -> Ty
-(Tyset taus) `meet` (Tyset taus') = Tyset $ greatestLowerBound $ intersection taus taus'
-(Tyset taus) `meet` tau           = Tyset taus            `meet` Tyset (singleton tau)
-tau          `meet` (Tyset taus)  = Tyset (singleton tau) `meet` Tyset taus
-tau          `meet` tau'          = Tyset (singleton tau) `meet` Tyset (singleton tau')
-
--- unification rules
-
-type BindSubst = Map TaggedName Binding
-type TySubst = Map String Ty
-
-(|-->) :: a -> b -> Map a b
-x |--> v = Map.singleton x v
-infixr 5 |-->
-
-identity :: Map a b
-identity = Map.empty
-
-merge :: TySubst -> TySubst -> TySubst
-merge = unionWith join
-
-bmerge :: BindSubst -> BindSubst -> BindSubst
-bmerge = unionWith resolveBinding
-
-solve :: Constraint -> (BindSubst, TySubst)
-solve Trivial = (identity, identity)
-solve (tau :<: tau') | tau == tau' = (identity, identity)
-solve (tau :<: Tyvar alpha) = (identity, alpha |--> tau)
-solve (b :@ name) = (name |--> b, identity)
-solve (c1 :/\ c2) = (bmerge btheta1 btheta2, merge theta1 theta2)
-    where (btheta1, theta1) = solve c1
-          (btheta2, theta2) = solve c2
-solve c = error $ "Tried to solve '" ++ show c ++ "'.  This is a bug in smudge.\n"
-
--- an external binding cannot be resolved
-resolveBinding :: Binding -> Binding -> Binding
-resolveBinding a          b        | a == b = a
-resolveBinding a          Unresolved        = a
-resolveBinding Unresolved b                 = b
-resolveBinding _          _                 = undefined
-
--- instantiation
-instantiate :: TySubst -> Ty -> Ty
-instantiate theta tau =
-    let setof (Tyset taus) = taus
-        setof tau = singleton tau
-        inst (tau :-> tau')     = inst tau :-> inst tau'
-        inst tau@(Tyvar alpha)  = findWithDefault tau alpha theta
-        inst (Tyset taus)       = Tyset $ leastUpperBound $ foldr union empty $ Set.map (setof . inst) taus
-        inst tau                = tau
-    in inst tau
-
-finished :: Ty -> Bool
-finished (tau :-> tau') = finished tau && finished tau'
-finished (Tyset taus) = foldr ((&&) . finished) True taus
-finished tau = instantiable tau
-
-subst :: TySubst -> TySubst
-subst theta = case Map.partition finished theta of
-              (theta_r, theta_u) | Map.null theta_u -> theta_r
-              (theta_r, theta_u) | Map.null theta_r -> error "Unable to complete substitution.  This is a bug in smudge.\n"
-              (theta_r, theta_u)                    -> Map.union theta_r (subst $ Map.map (instantiate theta_r) theta_u)
-
-rebind :: BindSubst -> TaggedName -> Binding -> Binding
-rebind theta k b = findWithDefault b k theta
-
--- canonicalization
-
-canonicalizeTabMono :: SymTab -> SymTab
-canonicalizeTabMono = Map.map (second canonicalize)
-
-canonicalizeTabPoly :: SymTab -> SymTab
-canonicalizeTabPoly = Map.map (second (canonicalize . bottomToVoid . voidToBottom))
-
-canonicalize :: Ty -> Ty
-canonicalize (Tyset taus) | Set.size taus == 1 = findMin taus
-canonicalize (tau :-> tau') = canonicalize tau :-> canonicalize tau'
-canonicalize tau = tau
-
-voidToBottom :: Ty -> Ty
-voidToBottom (Tyset taus) = Tyset $ Set.filter (/= Void) taus
-voidToBottom (t :-> t') = voidToBottom t :-> voidToBottom t'
-voidToBottom tau = tau
-
-bottomToVoid :: Ty -> Ty
-bottomToVoid (Tyset taus) | Set.null taus = Void
-bottomToVoid (t :-> t') = bottomToVoid t :-> bottomToVoid t'
-bottomToVoid tau = tau
+adaptTable :: T.SymbolTable -> SymbolTable
+adaptTable (T.SymbolTable gamma) = SymbolTable $ fromList $ goEnv gamma
+    where goTy (T.Product taus T.:-> T.Cap Nothing cs) = goFunTy (goCaps cs ++ taus) Void
+          goTy (T.Product taus T.:-> T.Ty x) = goFunTy taus $ Ty x
+          goTy (T.Ty x) = Ty x
+          goTy tau = error $ "Got untranslatable type " ++ show tau ++ ".  This is a bug in smudge.\n"
+          goCaps = toList . Set.foldr (Set.union . goCap) Set.empty . T.uncaps
+          goCap (T.Eventful x) = Set.singleton $ T.Ty x
+          goFunTy [] ret = Void :-> ret
+          goFunTy tys ret = foldr (:->) ret $ map goTy tys
+          goEnv = concatMap go . OMap.assocs
+          go (x@(TagFunction _), tau) = [(x, (External, goTy tau))]
+          go (x@(TagEvent    q), tau) = [(x, (Exported, Ty x)), (TagFunction q, (Exported, Ty x :-> Void))]
+          go (x@(TagMachine  _), T.Variant Nothing gamma) = goEnv gamma ++ xps ++ xts
+              where xps = map (fmap $ (,) Exported . goTy) $ machineExports x
+                    xts = map (fmap $ (,) External . goTy) $ machineExternals x
