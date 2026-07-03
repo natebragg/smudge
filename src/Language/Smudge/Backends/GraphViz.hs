@@ -93,7 +93,9 @@ instance Labellable QualifiedState where
 
 instance Labellable (Event TaggedName) where
     toLabelValue (Event e) = toLabelValue e
-    toLabelValue e         = toLabelValue $ show e
+    toLabelValue (EventAny _) = toLabelValue "EventAny"
+    toLabelValue  EventEnter  = toLabelValue "EventEnter"
+    toLabelValue (EventExit _) = toLabelValue "EventExit"
 
 instance Labellable (Function TaggedName) where
     toLabelValue (FuncVoid f) = toLabelValue f
