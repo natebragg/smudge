@@ -1,0 +1,13 @@
+// Copyright 2026 Nate Bragg.
+// This software is released under the 3-Clause BSD License.
+// The license can be viewed at https://github.com/smudgelang/smudge/blob/master/LICENSE
+
+reuse-funs {
+ * used-in-enter-and-body (@f) [
+     e -(@f)-
+   ],
+   used-in-exit-and-body [
+     e -(@g)-
+   ] (@g)
+}
+

@@ -141,7 +141,7 @@ shown in Figure~\ref{fig:types}.
 
     <$\tau$> ::= $\alpha^{\tau?}$ | "machine" <x> | \unitty | $\phi$ | $\tau \rightarrow \tau$ | $\tau \times \tau$ | $\Pi\ \Gamma$ | $\Sigma\ \Gamma$
 
-    <$\phi$> ::= $\varnothing$ | $\psi$ | $\phi$, "eventful" <x> | $\phi$, "wildcard" <x>
+    <$\phi$> ::= $\varnothing$ | $\psi$ | $\phi$, "eventful" <x> | $\phi$, "wildcard" <x> | $\phi$, "entering" <x> | $\phi$, "exiting" <x>
 
     <C> ::= $\top$ | $\tau \sim \tau$ | $\tau \sim$ "range" $\tau$ | <C> $\land$ <C>
   \end{grammar}
@@ -188,14 +188,19 @@ the active event of type $x$ is available to the side effect in question.
 When compiled, this will appear in C as a normal parameter to the function,
 which returns \void.
 %
-There is an additional capability we list here, \syntax{"wildcard" $x$}, meaning
+There are additional capabilities we list here that only exist during type
+inference and are not visible to the user or to code generation.
+%
+First, \syntax{"wildcard" $x$} means
 that any active event from machine $x$ could be made available---this enables
 locally inferring the type of the wildcard ``any'' event.
 %
-The \syntax{"wildcard"} capabilities only exist during type inference and are
-not visible to the user or to code generation; at the end of solving they are
+At the end of solving, \syntax{"wildcard"} capabilities are
 resolved into the concrete set of \syntax{"eventful"} capabilities known to the
 machine in question.
+%
+Finally, \syntax{"entering" $x$} and \syntax{"exiting" $x$} capabilities track
+state boundaries, and are discarded after capability resolution.
 
 Constraints come in two flavors:
 trivially true ($\top$),
@@ -424,8 +429,9 @@ environment.
 %
 It constrains $\tau$ to be a function with at least the capability
 \syntax{"eventful" $x$} (or \syntax{"wildcard" $x$} in the case where the side
-effect occurs in the handler for the ``any'' event), the remaining being
-absorbed by the slack capability
+effect occurs in the handler for the ``any'' event, or \syntax{"entering" $x$}
+or \syntax{"exiting" $x$} when the side effect occurs while entering or exiting
+a state), the remaining being absorbed by the slack capability
 variable $\psi$, and arguments matched to the fresh tyvar $\alpha$ that default
 to the unit type \unitty.
 

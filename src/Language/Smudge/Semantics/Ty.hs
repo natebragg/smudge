@@ -49,7 +49,13 @@ type Capvar = String
 
 data Capability = Eventful TaggedName
                 | Wildcard TaggedName
+                | Entering TaggedName
+                | Exiting  TaggedName
     deriving (Show, Eq, Ord)
+
+isEventful :: Capability -> Bool
+isEventful (Eventful _) = True
+isEventful _ = False
 
 isWild :: Capability -> Bool
 isWild (Wildcard _) = True
@@ -58,6 +64,14 @@ isWild _ = False
 nameMap :: (TaggedName -> a) -> Capability -> a
 nameMap f (Eventful x) = f x
 nameMap f (Wildcard x) = f x
+nameMap f (Entering x) = f x
+nameMap f (Exiting  x) = f x
+
+eventToCap :: Event TaggedName -> Capability
+eventToCap (Event      x) = Eventful x
+eventToCap (EventAny   x) = Wildcard x
+eventToCap (EventEnter x) = Entering x
+eventToCap (EventExit  x) = Exiting  x
 
 justMachine :: TaggedName -> TaggedName
 justMachine = fromJust . machineOf
@@ -119,6 +133,8 @@ prettyField (x, tau) = show x ++ ": " ++ pretty tau
 prettyCap :: Capability -> String
 prettyCap (Eventful x) = "eventful " ++ show x
 prettyCap (Wildcard x) = "wildcard " ++ show x
+prettyCap (Entering x) = "entering " ++ show x
+prettyCap (Exiting  x) = "exiting "  ++ show x
 
 pretty :: Ty -> String
 pretty (Tyvar tau x) = x ++ case tau of Nothing -> ""; Just tau -> "^(" ++ pretty tau ++ "?)"
@@ -299,7 +315,7 @@ instance Infer (Event TaggedName, Function TaggedName) where
         do alpha  <- Tyvar (Just $ Product []) <$> freshTyvar
            psi <- freshCapvar
            let Just tau = Map.lookup f gamma
-               cap_x = case a of Event x -> singletonC $ Eventful x; EventAny x -> singletonC $ Wildcard x; _ -> mempty
+               cap_x = singletonC $ eventToCap a
                c = tau :~: alpha :-> Cap (Just psi) cap_x
            return (c, tau)
 
@@ -410,21 +426,21 @@ class Resolve a where
     resolve :: Resolution -> Env -> a -> Except TypeError a
 
 instance Resolve Caps where
-    resolve r g = collapse r . mconcat . map resWild . toListC
+    resolve r g = fmap dropEnEx . collapse r . mconcat . map resWild . toListC
         where collapse :: Resolution -> Caps -> Except TypeError Caps
               collapse Passthrough cs         = return cs
               collapse _ cs | lengthC cs <= 1 = return cs
               collapse Strict (Caps cs)       = throwError $ "Could not strictly resolve function used in multiple contexts:\n    " ++ show cs ++ "\n"
               collapse Permissive _           = return mempty
-              resWild c@(Eventful _) = singletonC c
-              resWild   (Wildcard x) = fromListC $ map Eventful $ keys g'
+              resWild (Wildcard x) = fromListC $ map Eventful $ keys g'
                 where Just (Variant _ g') = Map.lookup m g
                       m = justMachine x
+              resWild c = singletonC c
+              dropEnEx = Caps . Set.filter isEventful . uncaps
 
 instance Resolve Ty where
-    resolve Passthrough _ tau     = return tau
-    resolve r _ tau@(Tyvar _ _)   = return tau
-    resolve r _ tau@(Ty _)        = return tau
+    resolve _ _ tau@(Tyvar _ _)   = return tau
+    resolve _ _ tau@(Ty _)        = return tau
     resolve r g (Cap p cs)        = Cap p <$> resolve r g cs
     resolve r g (tau1 :-> tau2)   = (:->) <$> resolve r g tau1 <*> resolve r g tau2
     resolve r g (Product taus)    = Product <$> resolve r g taus
