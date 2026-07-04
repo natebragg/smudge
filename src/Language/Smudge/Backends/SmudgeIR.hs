@@ -1,11 +1,13 @@
--- Copyright 2018 Bose Corporation.
+-- Copyright 2018 Bose Corporation, and 2026 Nate Bragg.
 -- This software is released under the 3-Clause BSD License.
 -- The license can be viewed at https://github.com/smudgelang/smudge/blob/master/LICENSE
 
+{-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE NamedFieldPuns #-}
 
 module Language.Smudge.Backends.SmudgeIR (
     SmudgeIR,
+    Binding(..),
     Def(..),
     Ty(..),
     DataDef(..),
@@ -17,7 +19,9 @@ module Language.Smudge.Backends.SmudgeIR (
     Expr(..),
     Var(..),
     lower,
-    lowerSymTab
+    lowerSymTab,
+    adaptTable,
+    filterBind,
 ) where
 
 import Language.Smudge.Backends.Backend (Config(..))
@@ -43,19 +47,27 @@ import Language.Smudge.Semantics.Model (
   events_for,
   states_for,
   )
-import Language.Smudge.Passes.Passes (afold)
-import Language.Smudge.Semantics.Operation (handlers, finalStates)
-import Language.Smudge.Semantics.Solver (
-  Binding(..),
-  SymbolTable,
+import Language.Smudge.Semantics.Basis (
+  machineExports,
+  machineExternals
   )
-import qualified Language.Smudge.Semantics.Solver as Solver (Ty(..))
+import qualified Language.Smudge.Semantics.Ty as T (
+  Capability(..),
+  uncaps,
+  Ty(..),
+  SymbolTable(..)
+  )
+import Language.Smudge.Semantics.Operation (handlers, finalStates)
 
 import Control.Arrow ((***), second)
 import Data.Graph.Inductive.PatriciaTree (Gr)
 import Data.Graph.Inductive.Graph (labNodes, lab, out, suc, insEdges, nodes, delNodes)
 import Data.List ((\\), nub)
-import Data.Map (Map, empty, insert, (!), toList, keys)
+import Data.Map (Map, fromList, foldrWithKey, empty, insert, (!), keys)
+import qualified Data.Map as Map(filter, toList)
+import qualified Data.Map.Ordered as OMap(assocs)
+import qualified Data.Set as Set(empty, singleton, union, foldr)
+import Data.Foldable (toList)
 import Data.Set (member)
 import Data.Maybe (fromJust)
 
@@ -79,12 +91,22 @@ instance Traversable Def where
     traverse f (FunDef name ps (b, ty) ds ss) = FunDef <$> f name <*> traverse f ps <*> ((,) b <$> traverse f ty) <*> traverse (traverse f) ds <*> traverse (traverse f) ss
     traverse f (DataDef d) = DataDef <$> traverse f d
 
+data Binding = External | Unresolved | Exported | Internal
+    deriving (Show, Eq, Ord)
+
 data Ty x = Void
         | Ty (Tagged x)
         | Ty x :-> Ty x
-    deriving (Eq, Ord, Show)
+    deriving (Eq, Ord)
 
 infixr 7 :->
+
+instance (Show x, Qualifiable x) => Show (Ty x) where
+    show = go False
+        where go _ Void = "void"
+              go _ (Ty n) = show $ qualify n
+              go True (tau :-> tau') = "(" ++ go True tau ++ " -> " ++ show tau' ++ ")"
+              go False (tau :-> tau') = go True tau ++ " -> " ++ show tau'
 
 instance Functor Ty where
     fmap f Void = Void
@@ -286,19 +308,33 @@ markUnused (FunDef name ps bty ds ss) = FunDef name ps bty ds ss'
           freein (VarDef _ (ListDec _ _ i)) =  foldMap (foldMap (foldMap pure)) i
           freein (VarDef _ (SizeDec _ i)) = foldMap pure i
 
+type SymbolTable = Map TaggedName (Binding, Ty QualifiedName)
+
+filterBind :: SymbolTable -> Binding -> SymbolTable
+filterBind gamma b = Map.filter (\(b', _) -> b == b') gamma
+
+adaptTable :: T.SymbolTable -> SymbolTable
+adaptTable (T.SymbolTable gamma) = fromList $ goEnv gamma
+    where goTy (T.Product taus T.:-> T.Cap Nothing cs) = goFunTy (goCaps cs ++ taus) Void
+          goTy (T.Product taus T.:-> T.Ty x) = goFunTy taus $ Ty x
+          goTy (T.Ty x) = Ty x
+          goTy tau = error $ "Got untranslatable type " ++ show tau ++ ".  This is a bug in smudge.\n"
+          goCaps = toList . Set.foldr (Set.union . goCap) Set.empty . T.uncaps
+          goCap (T.Eventful x) = Set.singleton $ T.Ty x
+          goFunTy [] ret = Void :-> ret
+          goFunTy tys ret = foldr (:->) ret $ map goTy tys
+          goEnv = concatMap go . OMap.assocs
+          go (x@(TagFunction _), tau) = [(x, (External, goTy tau))]
+          go (x@(TagEvent    q), tau) = [(x, (Exported, Ty x)), (TagFunction q, (Exported, Ty x :-> Void))]
+          go (x@(TagMachine  _), T.Variant Nothing gamma) = goEnv gamma ++ xps ++ xts
+              where xps = map (fmap $ (,) Exported . goTy) $ machineExports x
+                    xts = map (fmap $ (,) External . goTy) $ machineExternals x
+
 lower :: Config -> ([(StateMachine TaggedName, Gr EnterExitState Happening)], SymbolTable) -> SmudgeIR QualifiedName
 lower cfg (gs, syms) = concatMap (lowerMachine cfg syms) gs
 
-lowerTy :: Solver.Ty -> Ty QualifiedName
-lowerTy      Solver.Void  = Void
-lowerTy     (Solver.Ty x) = Ty x
-lowerTy (t Solver.:-> t') = lowerTy t :-> lowerTy t'
-
-lowerSolverSyms :: SymbolTable -> Map TaggedName (Binding, Ty QualifiedName)
-lowerSolverSyms = afold (uncurry insert . second (second lowerTy)) empty
-
 lowerSymTab :: [(StateMachine TaggedName, Gr EnterExitState Happening)] -> SymbolTable -> SmudgeIR QualifiedName
-lowerSymTab gs ssyms = map (markUnused . boundArgs) $ [
+lowerSymTab gs syms = map (markUnused . boundArgs) $ [
         DataDef $ TyDef name $ EvtDec ty | (name, (b, Ty ty)) <- symslist
     ] ++ [
         DataDef $ TyDef eventEnum $ SumDec eventEnum [(qualify (qualify "EVID", e), Just e) | Event e <- events_for g] -- a kludge to get it into the header
@@ -308,11 +344,10 @@ lowerSymTab gs ssyms = map (markUnused . boundArgs) $ [
     ]
     where
         args = map (qualify . ('a':) . show) [1..]
-        syms = lowerSolverSyms ssyms
-        symslist = toList syms
+        symslist = Map.toList syms
 
 lowerMachine :: Config -> SymbolTable -> (StateMachine TaggedName, Gr EnterExitState Happening) -> SmudgeIR QualifiedName
-lowerMachine cfg ssyms (StateMachine smName, g') = map (markUnused . boundArgs) $ [
+lowerMachine cfg syms (StateMachine smName, g') = map (markUnused . boundArgs) $ [
         DataDef $ TyDef stateEnum $ SumDec stateEnum [(st_id s, Nothing) | State s <- states],
         DataDef $ VarDef Internal $ ValDec stateVar (Ty stateEnum) (Init $ Value $ Var $ st_id initial)
     ] ++
@@ -338,7 +373,6 @@ lowerMachine cfg ssyms (StateMachine smName, g') = map (markUnused . boundArgs) 
          case s' of State _ -> True; StateAny _ -> True; _ -> False
     ]
     where
-        syms = lowerSolverSyms ssyms
         g = insEdges ([(n, n, Happening (EventExit q) ex [NoTransition])
                        | (n, EnterExitState {st = State q, ex = ex@(_:_)}) <- labNodes $ delNodes (finalStates g' ++ [n | n <- nodes g', (_, _, Happening (EventExit _) _ _) <- out g' n]) g'] ++
                       [(n, n, Happening (EventEnter q) en [NoTransition])
@@ -362,9 +396,9 @@ lowerMachine cfg ssyms (StateMachine smName, g') = map (markUnused . boundArgs) 
         st_id s = qualify (qualify "STID", s)
         states = states_for g
         events = events_for g
-        s_handlers e = [(s, h) | (s, Just h@(State _, _)) <- toList (handlers e g)]
-        unhandled e = [s | (s, Just (StateAny _, _)) <- toList (handlers e g)] ++ [s | (s, Nothing) <- toList (handlers e g)]
-        any_handler e = nub [h | (_, Just h@(StateAny _, _)) <- toList (handlers e g)]
+        s_handlers e = [(s, h) | (s, Just h@(State _, _)) <- Map.toList (handlers e g)]
+        unhandled e = [s | (s, Just (StateAny _, _)) <- Map.toList (handlers e g)] ++ [s | (s, Nothing) <- Map.toList (handlers e g)]
+        any_handler e = nub [h | (_, Just h@(StateAny _, _)) <- Map.toList (handlers e g)]
         initial = head [qualify s | (n, EnterExitState {st = StateEntry _}) <- labNodes g, n' <- suc g n,
                                     Just (EnterExitState {st = (State s)}) <- [lab g n']]
 

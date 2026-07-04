@@ -44,12 +44,9 @@ import Language.Smudge.Grammar (
   Event(..),
   State(..),
   )
-import Language.Smudge.Semantics.Solver (
-  SymbolTable,
-  adaptTable
-  )
 import Language.Smudge.Semantics.Ty (
   Resolution(Strict, Permissive, Passthrough),
+  SymbolTable,
   elaborate
   )
 import qualified Language.Smudge.Parser.Smudge as Parser (smudge_file)
@@ -142,8 +139,8 @@ checkAndConvert sms os = do
             when (any fatal fs) $ report_failure $ length fs
 
             st <- case runExcept (elaborate capRes (basis aliases) sms''') of
-                    Left err  -> putStr err >> report_failure 1
-                    Right st' -> print (adaptTable st') >> return (adaptTable st')
+                    Left err -> putStr err >> report_failure 1
+                    Right st -> return st
 
             let gs = passWholeStateToGraph sms'''
             let fs = concat $ map make_passes gs

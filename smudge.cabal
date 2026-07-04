@@ -50,7 +50,6 @@ library
                      Language.Smudge.Semantics.Basis
                      Language.Smudge.Semantics.Model
                      Language.Smudge.Semantics.Operation
-                     Language.Smudge.Semantics.Solver
                      Language.Smudge.Semantics.Ty
                      System.Console.GetOpt.Extra
   other-modules:     System.FilePath.Extra

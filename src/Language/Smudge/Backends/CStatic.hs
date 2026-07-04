@@ -14,6 +14,7 @@ import Language.Smudge.Backends.Backend (
   )
 import Language.Smudge.Backends.SmudgeIR (
   SmudgeIR,
+  Binding(..),
   Ty(..),
   Def(..),
   DataDef(..),
@@ -25,6 +26,8 @@ import Language.Smudge.Backends.SmudgeIR (
   Var(..),
   lower,
   lowerSymTab,
+  adaptTable,
+  filterBind,
   )
 import Language.C89.Grammar
 import Language.Smudge.Grammar (
@@ -40,10 +43,6 @@ import Language.Smudge.Semantics.Model (
 import Language.Smudge.Passes.Passes (
   Fault(..),
   Severity(..),
-  )
-import Language.Smudge.Semantics.Solver (
-  Binding(..),
-  filterBind,
   )
 import Language.Smudge.Parsers.Id (
   rawtest,
@@ -348,7 +347,8 @@ instance Backend CStaticOption where
             writeTranslationUnit (renderSrc src $ smearIncls ++ [Rel extHdrName, Rel headerName]) outputName,
             writeTranslationUnit (renderHdr ext [Rel headerName]) extHdrName] ++
             if stubs then [writeTranslationUnit (renderStubs exs $ smearIncls ++ [Rel extHdrName, Rel headerName]) extSrcName] else []
-        where (gs, aliases, syms) = gswust
+        where (gs, aliases, syms_0) = gswust
+              syms = adaptTable syms_0
               writeTranslationUnit render fp = (render fp) >>= (writeFile fp) >> (return fp)
               renderLeaderTrailer leader trailer u includes fp = leader includes fp <++ (renderPretty u ++ trailer)
               renderHdr = renderLeaderTrailer hdrLeader hdrTrailer

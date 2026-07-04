@@ -10,7 +10,7 @@ module Language.Smudge.Backends.Backend (
 
 import Language.Smudge.Grammar (StateMachine, State, Event)
 import Language.Smudge.Semantics.Model (QualifiedName, TaggedName, Happening, EnterExitState)
-import Language.Smudge.Semantics.Solver (SymbolTable)
+import Language.Smudge.Semantics.Ty (SymbolTable)
 import Language.Smudge.Semantics.Alias (Alias)
 import Language.Smudge.Passes.Passes (Fault)
 
