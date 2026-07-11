@@ -27,7 +27,6 @@ import Language.Smudge.Backends.SmudgeIR (
   lower,
   lowerSymTab,
   adaptTable,
-  filterBind,
   )
 import Language.C89.Grammar
 import Language.Smudge.Grammar (
@@ -339,10 +338,10 @@ instance Backend CStaticOption where
                  "generate stub implementation."])
     generate os cfg gswust outputTarget = do
         let convertTU = fmap fromList . mapExceptT (return . runIdentity)
-        hdr <- convertTU $ convertIR True False <$> (passMangle aliases $ lowerSymTab gs $ filterBind syms Exported)
+        hdr <- convertTU $ convertIR True False <$> (passMangle aliases $ lowerSymTab gs syms Exported)
         src <- convertTU $ concat <$> sequence [convertIR True True <$> (passMangle aliases $ lower cfg ([g], syms)) | g <- gs]
-        ext <- convertTU $ convertIR True False <$> (passMangle aliases $ lowerSymTab [] $ filterBind syms External)
-        exs <- convertTU $ convertIR False True <$> (passMangle aliases $ smearify $ lowerSymTab [] $ filterBind syms External)
+        ext <- convertTU $ convertIR True False <$> (passMangle aliases $ lowerSymTab [] syms External)
+        exs <- convertTU $ convertIR False True <$> (passMangle aliases $ smearify $ lowerSymTab [] syms External)
         liftIO $ sequence $ [writeTranslationUnit (renderHdr hdr []) headerName,
             writeTranslationUnit (renderSrc src $ smearIncls ++ [Rel extHdrName, Rel headerName]) outputName,
             writeTranslationUnit (renderHdr ext [Rel headerName]) extHdrName] ++

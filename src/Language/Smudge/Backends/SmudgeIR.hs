@@ -21,7 +21,6 @@ module Language.Smudge.Backends.SmudgeIR (
     lower,
     lowerSymTab,
     adaptTable,
-    filterBind,
 ) where
 
 import Language.Smudge.Backends.Backend (Config(..))
@@ -310,9 +309,6 @@ markUnused (FunDef name ps bty ds ss) = FunDef name ps bty ds ss'
 
 type SymbolTable = Map TaggedName (Binding, Ty QualifiedName)
 
-filterBind :: SymbolTable -> Binding -> SymbolTable
-filterBind gamma b = Map.filter (\(b', _) -> b == b') gamma
-
 adaptTable :: T.SymbolTable -> SymbolTable
 adaptTable (T.SymbolTable gamma) = fromList $ goEnv gamma
     where goTy (T.Product taus T.:-> T.Cap Nothing cs) = goFunTy (goCaps cs ++ taus) Void
@@ -333,14 +329,14 @@ adaptTable (T.SymbolTable gamma) = fromList $ goEnv gamma
 lower :: Config -> ([(StateMachine TaggedName, Gr EnterExitState Happening)], SymbolTable) -> SmudgeIR QualifiedName
 lower cfg (gs, syms) = concatMap (lowerMachine cfg syms) gs
 
-lowerSymTab :: [(StateMachine TaggedName, Gr EnterExitState Happening)] -> SymbolTable -> SmudgeIR QualifiedName
-lowerSymTab gs syms = map (markUnused . boundArgs) $ [
-        DataDef $ TyDef name $ EvtDec ty | (name, (b, Ty ty)) <- symslist
+lowerSymTab :: [(StateMachine TaggedName, Gr EnterExitState Happening)] -> SymbolTable -> Binding -> SmudgeIR QualifiedName
+lowerSymTab gs syms b = map (markUnused . boundArgs) $ [
+        DataDef $ TyDef name $ EvtDec ty | (name, (b', Ty ty)) <- symslist, b == b'
     ] ++ [
         DataDef $ TyDef eventEnum $ SumDec eventEnum [(qualify (qualify "EVID", e), Just e) | Event e <- events_for g] -- a kludge to get it into the header
             | (StateMachine smName, g) <- gs, let eventEnum = (\(Ty p :-> r) -> p) $ snd (syms ! TagFunction (qualify (smName, "Handle_Message")))
     ] ++ [
-        FunDef (qualify n) args f [] [] | (n, f@(_, _ :-> _)) <- symslist
+        FunDef (qualify n) args f [] [] | (n, f@(b', _ :-> _)) <- symslist, b == b'
     ]
     where
         args = map (qualify . ('a':) . show) [1..]
