@@ -34,12 +34,21 @@ basisAlias namespace = fromList $ map q [
             "panic"]
     where q n = (qualify n, qualify(namespace, n))
 
+void :: Ty
+void = Ty $ TagBuiltin $ qualify "void"
+
+str :: Ty
+str = Ty $ TagBuiltin $ qualify "char"
+
+wrapper_name :: TaggedName -> TaggedName
+wrapper_name m = TagState $ qualify (m, "Event_Wrapper")
+
 wrapper :: TaggedName -> Ty
-wrapper m = Ty $ TagState $ qualify (m, "Event_Wrapper")
+wrapper = Ty . wrapper_name
 
 machineExports :: TaggedName -> [(TaggedName, Ty)]
 machineExports m = runtime
-    where str = Ty $ TagBuiltin $ qualify "char"
+    where
           runtime = [
             -- add more sm-specific exports here
             (TagFunction $ qualify (m, "Free_Message"),       Product [wrapper m] :-> Cap Nothing mempty),
@@ -55,8 +64,6 @@ machineExternals m = runtime
 basis :: Alias QualifiedName -> SymbolTable
 basis aliases = runtime
     where rename' = rename aliases . qualify
-          void = Ty $ TagBuiltin $ qualify "void"
-          str = Ty $ TagBuiltin $ qualify "char"
           runtime = SymbolTable $ OMap.fromList [
             -- add more smudge-wide externals here
             (TagFunction $ rename' "debug_print", Product [str, str, str] :-> Cap Nothing mempty),
