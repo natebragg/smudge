@@ -96,16 +96,16 @@ data Binding = External | Unresolved | Exported | Internal
 data Ty x = Void
         | Ty (Tagged x)
         | Ty x :-> Ty x
-    deriving (Eq, Ord)
+    deriving (Show, Eq, Ord)
 
 infixr 7 :->
 
-instance (Show x, Qualifiable x) => Show (Ty x) where
-    show = go False
-        where go _ Void = "void"
-              go _ (Ty n) = show $ qualify n
-              go True (tau :-> tau') = "(" ++ go True tau ++ " -> " ++ show tau' ++ ")"
-              go False (tau :-> tau') = go True tau ++ " -> " ++ show tau'
+pretty :: (Show x, Qualifiable x) => Ty x -> String
+pretty = go False
+    where go _ Void = "void"
+          go _ (Ty n) = show $ qualify n
+          go True tau = "(" ++ pretty tau ++ ")"
+          go _ (tau :-> tau') = go True tau ++ " -> " ++ pretty tau'
 
 instance Functor Ty where
     fmap f Void = Void
@@ -508,11 +508,11 @@ lowerMachine cfg syms (StateMachine smName, g') = map (markUnused . boundArgs) $
                   isEventTy _ _ = False
 
                   psOf (Void :-> Void) _ = []
-                  psOf ty@(Void :-> (_ :-> _)) _ = error $ "Tried to apply a function with multiple arguments including Void: " ++ show ty ++ ".  This is a bug in smudge.\n"
+                  psOf ty@(Void :-> (_ :-> _)) _ = error $ "Tried to apply a function with multiple arguments including Void: " ++ pretty ty ++ ".  This is a bug in smudge.\n"
                   psOf ty args = go ty args
                       where go Void [] = []
                             go (_ :-> f) (arg:args) = Value (Var arg) : go f args
-                            go _ _  = error $ "Tried to apply a function whose arguments (" ++ show args ++ ") did not match its type (" ++ show ty ++ ") " ++ show h ++ ".  This is a bug in smudge.\n"
+                            go _ _  = error $ "Tried to apply a function whose arguments (" ++ show args ++ ") did not match its type (" ++ pretty ty ++ ") " ++ show h ++ ".  This is a bug in smudge.\n"
                   apply_se (SideEffect fn args) = go fn $ snd $ syms ! f
                       where go (FuncEvent (_, e)) (p :-> Void) | isEventTy p e   = FunCall (qualify f) [Null]
                             go (FuncVoid _) ty@(p :-> _) | isEventTy p (event h) = FunCall (qualify f) $ psOf ty (event_var : qargs)
