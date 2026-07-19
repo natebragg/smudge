@@ -94,8 +94,9 @@ data Binding = External | Unresolved | Exported | Internal
     deriving (Show, Eq, Ord)
 
 data Ty x = Void
-        | Ty (Tagged x)
-        | Ty x :-> Ty x
+          | Ty (Tagged x)
+          | Box (Ty x)
+          | Ty x :-> Ty x
     deriving (Show, Eq, Ord)
 
 infixr 7 :->
@@ -104,21 +105,25 @@ pretty :: (Show x, Qualifiable x) => Ty x -> String
 pretty = go False
     where go _ Void = "void"
           go _ (Ty n) = show $ qualify n
+          go _ (Box tau) = "box " ++ go True tau
           go True tau = "(" ++ pretty tau ++ ")"
           go _ (tau :-> tau') = go True tau ++ " -> " ++ pretty tau'
 
 instance Functor Ty where
     fmap f Void = Void
+    fmap f (Box tau) = Box $ fmap f tau
     fmap f (Ty n) = Ty $ fmap f n
     fmap f (tau :-> tau') = fmap f tau :-> fmap f tau'
 
 instance Foldable Ty where
     foldMap f Void = mempty
+    foldMap f (Box tau) = foldMap f tau
     foldMap f (Ty n) = foldMap f n
     foldMap f (tau :-> tau') = foldMap f tau `mappend` foldMap f tau'
 
 instance Traversable Ty where
     traverse f Void = pure Void
+    traverse f (Box tau) = Box <$> traverse f tau
     traverse f (Ty n) = Ty <$> traverse f n
     traverse f (tau :-> tau') = (:->) <$> traverse f tau <*> traverse f tau'
 
@@ -312,8 +317,9 @@ type SymbolTable = Map TaggedName (Binding, Ty QualifiedName)
 adaptTable :: T.SymbolTable -> SymbolTable
 adaptTable (T.SymbolTable gamma) = fromList $ goEnv gamma
     where goTy (T.Product taus T.:-> T.Cap Nothing cs) = goFunTy (goCaps cs ++ taus) Void
-          goTy (T.Product taus T.:-> T.Ty x) = goFunTy taus $ Ty x
-          goTy (T.Ty x) = Ty x
+          goTy (T.Product taus T.:-> T.Ty x) = goFunTy taus $ Box (Ty x)
+          goTy (T.Ty x@(TagState _ )) = Ty x
+          goTy (T.Ty x) = Box $ Ty x
           goTy tau = error $ "Got untranslatable type " ++ show tau ++ ".  This is a bug in smudge.\n"
           goCaps = toList . Set.foldr (Set.union . goCap) Set.empty . T.uncaps
           goCap (T.Eventful x) = Set.singleton $ T.Ty x
@@ -321,7 +327,7 @@ adaptTable (T.SymbolTable gamma) = fromList $ goEnv gamma
           goFunTy tys ret = foldr (:->) ret $ map goTy tys
           goEnv = concatMap go . OMap.assocs
           go (x@(TagFunction _), tau) = [(x, (External, goTy tau))]
-          go (x@(TagEvent    q), tau) = [(x, (Exported, Ty x)), (TagFunction q, (Exported, Ty x :-> Void))]
+          go (x@(TagEvent    q), tau) = [(x, (Exported, Ty x)), (TagFunction q, (Exported, Box (Ty x) :-> Void))]
           go (x@(TagMachine  _), T.Variant Nothing gamma) = goEnv gamma ++ xps ++ xts
               where xps = map (fmap $ (,) Exported . goTy) $ machineExports x
                     xts = map (fmap $ (,) External . goTy) $ machineExternals x
@@ -375,7 +381,7 @@ lowerMachine cfg syms (StateMachine smName, g') = map (markUnused . boundArgs) $
                        | (n, EnterExitState {en, st = State q}) <- labNodes $ delNodes [n | n <- nodes g', (_, _, Happening (EventEnter _) _ _) <- out g' n] g']) g'
         notShadowing x = not $ x `elem` map qualify (keys syms)
         eventNames = filter notShadowing $ map qualify $ ["e"] ++ map (('e':) . show) [2..]
-        char = TagBuiltin $ qualify "char"
+        char = Box $ Ty $ TagBuiltin $ qualify "char"
         stateName_f = qualify (smName, "State_name")
         eventName_f = qualify (smName, "Event_name")
         send_f = qualify (smName, "Send_Message")
@@ -399,8 +405,8 @@ lowerMachine cfg syms (StateMachine smName, g') = map (markUnused . boundArgs) $
                                     Just (EnterExitState {st = (State s)}) <- [lab g n']]
 
         stateNameFun :: Def QualifiedName
-        stateNameFun = FunDef stateName_f [state_var] (Internal, Ty stateEnum :-> Ty char) ds es
-            where ds = [VarDef Internal $ ListDec names_var (Ty char) $ Init [Literal (disqualifyTag s) | State s <- states],
+        stateNameFun = FunDef stateName_f [state_var] (Internal, Ty stateEnum :-> char) ds es
+            where ds = [VarDef Internal $ ListDec names_var char $ Init [Literal (disqualifyTag s) | State s <- states],
                         VarDef Internal $ SizeDec count_var $ Init names_var]
                   es = [Return $ SafeIndex (Var names_var) (Var state_var) (Var count_var) "INVALID_STATE"]
                   names_var = qualify "state_name"
@@ -408,8 +414,8 @@ lowerMachine cfg syms (StateMachine smName, g') = map (markUnused . boundArgs) $
                   state_var = qualify "s"
 
         eventNameFun :: Def QualifiedName
-        eventNameFun = FunDef eventName_f [event_var] (Internal, Ty eventEnum :-> Ty char) ds es
-            where ds = [VarDef Internal $ ListDec names_var (Ty char) $ Init [Literal (disqualifyTag e) | Event e <- events],
+        eventNameFun = FunDef eventName_f [event_var] (Internal, Ty eventEnum :-> char) ds es
+            where ds = [VarDef Internal $ ListDec names_var char $ Init [Literal (disqualifyTag e) | Event e <- events],
                         VarDef Internal $ SizeDec count_var $ Init names_var]
                   es = [Return $ SafeIndex (Var names_var) (SumVar event_var) (Var count_var) "INVALID_EVENT"]
                   names_var = qualify "event_name"
@@ -422,7 +428,7 @@ lowerMachine cfg syms (StateMachine smName, g') = map (markUnused . boundArgs) $
             where f_name = qualify (smName, "Current_state_name")
 
         unhandledEventFun :: [(State TaggedName, Event TaggedName)] -> Event TaggedName -> Def QualifiedName
-        unhandledEventFun handler e@(Event evName) = FunDef f_name eventNames (Internal, Ty evName :-> Void) ds es
+        unhandledEventFun handler e@(Event evName) = FunDef f_name eventNames (Internal, Box (Ty evName) :-> Void) ds es
             where f_name = unhandled_f e
                   name_var = qualify "event_name"
                   event_var = head eventNames
@@ -489,7 +495,7 @@ lowerMachine cfg syms (StateMachine smName, g') = map (markUnused . boundArgs) $
         stateEventFun st h st' do_exit = FunDef f_name eventNames (Internal, ty) [] $ logAState ++ map ExprS es
             where f_name = qualify (sName st, mangleEv $ event h)
                   ty = case event h of
-                              (Event t) -> Ty t :-> Void
+                              (Event t) -> Box (Ty t) :-> Void
                               otherwise -> Void :-> Void
 
                   hIsEnter = case event h of EventEnter _ -> True; _ -> False
@@ -504,7 +510,7 @@ lowerMachine cfg syms (StateMachine smName, g') = map (markUnused . boundArgs) $
                   call_enter = FunCall (qualify (sName st', "enter")) []
 
                   isEventTy :: Ty QualifiedName -> Event TaggedName -> Bool
-                  isEventTy a (Event e) = a == snd (syms ! e)
+                  isEventTy (Box a) (Event e) = a == snd (syms ! e)
                   isEventTy _ _ = False
 
                   psOf (Void :-> Void) _ = []

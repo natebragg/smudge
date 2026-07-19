@@ -168,7 +168,7 @@ convertIR dodec dodef (aliases, ir) =
         convertTyDec (SumDec x cs) = if all isNothing cvs then convertEnum x cxs else taggedUnion
             where (cxs, cvs) = unzip cs
                   tag = fromList [Left $ makeEnum "" $ map fullQual cxs]
-                  union = fromList [Left $ makeUnion "" $ map (uncurry convertDeclarator . (foldMap evtQual &&& Ty . fmap fullQual)) $ catMaybes cvs]
+                  union = fromList [Left $ makeUnion "" $ map (uncurry convertDeclarator . (foldMap evtQual &&& Box . Ty . fmap fullQual)) $ catMaybes cvs]
                   taggedUnion = fromList [Left $ makeStruct (convertTName $ fmap fullQual x) [(tag, tag_name), (union, union_name)]]
                   tag_name = Declarator Nothing $ IDirectDeclarator id_field
                   union_name = Declarator Nothing $ IDirectDeclarator event_field
@@ -221,15 +221,19 @@ convertIR dodec dodef (aliases, ir) =
         convertStruct :: Tagged (FullyQualAndEvent Identifier) -> SpecifierQualifierList
         convertStruct x = fromList [Left $ makeStruct (convertTName $ fmap fullQual x) []]
 
-        constable (TagEvent _)   = True
-        constable (TagBuiltin _) = True
-        constable _              = False
+        constify :: SpecifierQualifierList -> SpecifierQualifierList
+        constify sql@(SimpleList (Right CONST) _) = sql
+        constify sql = Right CONST <: sql
+
+        pointTo :: Maybe AbstractDeclarator -> Maybe AbstractDeclarator
+        pointTo Nothing          = Just $ This $ fromList [POINTER Nothing]
+        pointTo (Just (This ps)) = Just $ This $ POINTER Nothing <: ps
 
         convertAbsDeclarator :: Ty Identifier -> (SpecifierQualifierList, Maybe AbstractDeclarator)
-        convertAbsDeclarator Void                 = (fromList [Left VOID], Nothing)
-        convertAbsDeclarator (Ty t) | constable t = (fromList [Right CONST, Left $ TypeSpecifier $ convertTName t], Just $ This $ fromList [POINTER Nothing])
-        convertAbsDeclarator (Ty t)               = (fromList [Left $ TypeSpecifier $ convertTName t], Nothing)
-        convertAbsDeclarator (p :-> r)            = (spec, Just absdec)
+        convertAbsDeclarator Void      = (fromList [Left VOID], Nothing)
+        convertAbsDeclarator (Box tau) = constify *** pointTo $ convertAbsDeclarator tau
+        convertAbsDeclarator (Ty t)    = (fromList [Left $ TypeSpecifier $ convertTName t], Nothing)
+        convertAbsDeclarator (p :-> r) = (spec, Just absdec)
             where ((spec, rabsdec), rparams) = convertF (p :-> r)
                   params = ParameterTypeList (fromList rparams) Nothing
                   pdeclr dad = PDirectAbstractDeclarator dad LEFTPAREN (Just params) RIGHTPAREN
