@@ -143,19 +143,23 @@ instance Traversable DataDef where
     traverse f (VarDef b d) = VarDef b <$> traverse f d
 
 data TyDec x = EvtDec (Tagged x)
-             | SumDec (Tagged x) [(x, Maybe (Tagged x))]
+             | SumDec (Tagged x) [(x, Tagged x)]
+             | EnumDec (Tagged x) [x]
 
 instance Functor TyDec where
     fmap f (EvtDec ty) = EvtDec $ fmap f ty
-    fmap f (SumDec x cs) = SumDec (fmap f x) (map (f *** fmap (fmap f)) cs)
+    fmap f (SumDec x cs) = SumDec (fmap f x) (map (f *** fmap f) cs)
+    fmap f (EnumDec x cs) = EnumDec (fmap f x) (map f cs)
 
 instance Foldable TyDec where
     foldMap f (EvtDec ty) = foldMap f ty
-    foldMap f (SumDec x cs) = foldMap f x `mappend` foldMap (uncurry mappend . (f *** foldMap (foldMap f))) cs
+    foldMap f (SumDec x cs) = foldMap f x `mappend` foldMap (uncurry mappend . (f *** foldMap f)) cs
+    foldMap f (EnumDec x cs) = foldMap f x `mappend` foldMap f cs
 
 instance Traversable TyDec where
     traverse f (EvtDec ty) = EvtDec <$> traverse f ty
-    traverse f (SumDec x cs) = SumDec <$> traverse f x <*> traverse (seqtup . (f *** traverse (traverse f))) cs
+    traverse f (SumDec x cs) = SumDec <$> traverse f x <*> traverse (seqtup . (f *** traverse f)) cs
+    traverse f (EnumDec x cs) = EnumDec <$> traverse f x <*> traverse f cs
 
 newtype Init a = Init a
 
@@ -339,7 +343,7 @@ lowerSymTab :: [(StateMachine TaggedName, Gr EnterExitState Happening)] -> Symbo
 lowerSymTab gs syms b = map (markUnused . boundArgs) $ [
         DataDef $ TyDef name $ EvtDec ty | (name, (b', Ty ty)) <- symslist, b == b'
     ] ++ [
-        DataDef $ TyDef eventEnum $ SumDec eventEnum [(qualify (qualify "EVID", e), Just e) | Event e <- events_for g] -- a kludge to get it into the header
+        DataDef $ TyDef eventEnum $ SumDec eventEnum [(qualify (qualify "EVID", e), e) | Event e <- events_for g] -- a kludge to get it into the header
             | (StateMachine smName, g) <- gs, let eventEnum = (\(Ty p :-> r) -> p) $ snd (syms ! TagFunction (qualify (smName, "Handle_Message")))
     ] ++ [
         FunDef (qualify n) args f [] [] | (n, f@(b', _ :-> _)) <- symslist, b == b'
@@ -350,7 +354,7 @@ lowerSymTab gs syms b = map (markUnused . boundArgs) $ [
 
 lowerMachine :: Config -> SymbolTable -> (StateMachine TaggedName, Gr EnterExitState Happening) -> SmudgeIR QualifiedName
 lowerMachine cfg syms (StateMachine smName, g') = map (markUnused . boundArgs) $ [
-        DataDef $ TyDef stateEnum $ SumDec stateEnum [(st_id s, Nothing) | State s <- states],
+        DataDef $ TyDef stateEnum $ EnumDec stateEnum [st_id s | State s <- states],
         DataDef $ VarDef Internal $ ValDec stateVar (Ty stateEnum) (Init $ Value $ Var $ st_id initial)
     ] ++
         (if debug cfg then [stateNameFun, eventNameFun] else [])
@@ -444,7 +448,7 @@ lowerMachine cfg syms (StateMachine smName, g') = map (markUnused . boundArgs) $
                   init_enum = TagState $ qualify "init_flag"
                   init_init = qualify "INITIALIZED"
                   init_uninit = qualify "UNINITIALIZED"
-                  ds = [TyDef init_enum $ SumDec init_enum [(init_uninit, Nothing), (init_init, Nothing)],
+                  ds = [TyDef init_enum $ EnumDec init_enum [init_uninit, init_init],
                         VarDef Internal $ ValDec init_var (Ty init_enum) (Init $ Value $ Var init_uninit)]
                   es = [If (init_init `Neq` init_var) [
                             ExprS $ Var stateVar `Assign` Value (Var $ st_id s),

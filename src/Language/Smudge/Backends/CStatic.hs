@@ -71,7 +71,6 @@ import Control.Monad.Trans (liftIO)
 import Control.Monad.Trans.Except (Except, mapExceptT, throwE)
 import Data.Char (isDigit)
 import Data.List (isPrefixOf)
-import Data.Maybe (catMaybes, isNothing)
 import System.FilePath (
   FilePath,
   dropExtension,
@@ -165,13 +164,14 @@ convertIR dodec dodef (aliases, ir) =
 
         convertTyDec :: TyDec (FullyQualAndEvent Identifier) -> SpecifierQualifierList
         convertTyDec (EvtDec ty)   = convertStruct ty
-        convertTyDec (SumDec x cs) = if all isNothing cvs then convertEnum x cxs else taggedUnion
+        convertTyDec (SumDec x cs) = taggedUnion
             where (cxs, cvs) = unzip cs
                   tag = fromList [Left $ makeEnum "" $ map fullQual cxs]
-                  union = fromList [Left $ makeUnion "" $ map (uncurry convertDeclarator . (foldMap evtQual &&& Box . Ty . fmap fullQual)) $ catMaybes cvs]
+                  union = fromList [Left $ makeUnion "" $ map (uncurry convertDeclarator . (foldMap evtQual &&& Box . Ty . fmap fullQual)) cvs]
                   taggedUnion = fromList [Left $ makeStruct (convertTName $ fmap fullQual x) [(tag, tag_name), (union, union_name)]]
                   tag_name = Declarator Nothing $ IDirectDeclarator id_field
                   union_name = Declarator Nothing $ IDirectDeclarator event_field
+        convertTyDec (EnumDec x cs) = convertEnum x cs
 
         convertVarDef :: VarDec Init (FullyQualAndEvent Identifier) -> ((SpecifierQualifierList, Declarator), Maybe Initializer)
         convertVarDef v@(ValDec _ _ (Init e))   = (convertVarDec v, Just $ AInitializer $ convertExpr e)
