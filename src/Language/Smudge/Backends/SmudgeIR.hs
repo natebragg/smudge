@@ -143,22 +143,22 @@ instance Traversable DataDef where
     traverse f (VarDef b d) = VarDef b <$> traverse f d
 
 data TyDec x = EvtDec (Tagged x)
-             | SumDec (Tagged x) [(x, Tagged x)]
+             | SumDec (Tagged x) [(x, Ty x, x)]
              | EnumDec (Tagged x) [x]
 
 instance Functor TyDec where
     fmap f (EvtDec ty) = EvtDec $ fmap f ty
-    fmap f (SumDec x cs) = SumDec (fmap f x) (map (f *** fmap f) cs)
+    fmap f (SumDec x cs) = SumDec (fmap f x) (map (\(x, ty, y) -> (f x, fmap f ty, f y)) cs)
     fmap f (EnumDec x cs) = EnumDec (fmap f x) (map f cs)
 
 instance Foldable TyDec where
     foldMap f (EvtDec ty) = foldMap f ty
-    foldMap f (SumDec x cs) = foldMap f x `mappend` foldMap (uncurry mappend . (f *** foldMap f)) cs
+    foldMap f (SumDec x cs) = foldMap f x `mappend` foldMap (\(x, ty, y) -> f x `mappend` foldMap f ty `mappend` f y) cs
     foldMap f (EnumDec x cs) = foldMap f x `mappend` foldMap f cs
 
 instance Traversable TyDec where
     traverse f (EvtDec ty) = EvtDec <$> traverse f ty
-    traverse f (SumDec x cs) = SumDec <$> traverse f x <*> traverse (seqtup . (f *** traverse f)) cs
+    traverse f (SumDec x cs) = SumDec <$> traverse f x <*> traverse (\(x, ty, y) -> (,,) <$> f x <*> traverse f ty <*> f y) cs
     traverse f (EnumDec x cs) = EnumDec <$> traverse f x <*> traverse f cs
 
 newtype Init a = Init a
@@ -318,12 +318,15 @@ markUnused (FunDef name ps bty ds ss) = FunDef name ps bty ds ss'
 
 type SymbolTable = Map TaggedName (Binding, Ty QualifiedName)
 
+eventTy x = Ty $ TagEvent $ x <> qualify "t"
+
 adaptTable :: T.SymbolTable -> SymbolTable
 adaptTable (T.SymbolTable gamma) = fromList $ goEnv gamma
     where goTy (T.Product taus T.:-> T.Cap Nothing cs) = goFunTy (goCaps cs ++ taus) Void
-          goTy (T.Product taus T.:-> T.Ty x) = goFunTy taus $ Box (Ty x)
-          goTy (T.Ty x@(TagState _ )) = Ty x
-          goTy (T.Ty x) = Box $ Ty x
+          goTy (T.Product taus T.:-> tau@(T.Ty _)) = goFunTy taus $ goTy tau
+          goTy (T.Ty x@(TagState _)) = Ty x
+          goTy (T.Ty   (TagEvent x)) = Box $ eventTy x
+          goTy (T.Ty x@(TagBuiltin _)) = Box $ Ty x
           goTy tau = error $ "Got untranslatable type " ++ show tau ++ ".  This is a bug in smudge.\n"
           goCaps = toList . Set.foldr (Set.union . goCap) Set.empty . T.uncaps
           goCap (T.Eventful x) = Set.singleton $ T.Ty x
@@ -331,7 +334,7 @@ adaptTable (T.SymbolTable gamma) = fromList $ goEnv gamma
           goFunTy tys ret = foldr (:->) ret $ map goTy tys
           goEnv = concatMap go . OMap.assocs
           go (x@(TagFunction _), tau) = [(x, (External, goTy tau))]
-          go (x@(TagEvent    q), tau) = [(x, (Exported, Ty x)), (TagFunction q, (Exported, Box (Ty x) :-> Void))]
+          go (x@(TagEvent    a), tau) = [(x, (Exported, eventTy a)), (TagFunction a, (Exported, Box (eventTy a) :-> Void))]
           go (x@(TagMachine  _), T.Variant Nothing gamma) = goEnv gamma ++ xps ++ xts
               where xps = map (fmap $ (,) Exported . goTy) $ machineExports x
                     xts = map (fmap $ (,) External . goTy) $ machineExternals x
@@ -339,11 +342,13 @@ adaptTable (T.SymbolTable gamma) = fromList $ goEnv gamma
 lower :: Config -> ([(StateMachine TaggedName, Gr EnterExitState Happening)], SymbolTable) -> SmudgeIR QualifiedName
 lower cfg (gs, syms) = concatMap (lowerMachine cfg syms) gs
 
+eventField = extractWith seq (qualify . (,) "e")
+
 lowerSymTab :: [(StateMachine TaggedName, Gr EnterExitState Happening)] -> SymbolTable -> Binding -> SmudgeIR QualifiedName
 lowerSymTab gs syms b = map (markUnused . boundArgs) $ [
-        DataDef $ TyDef name $ EvtDec ty | (name, (b', Ty ty)) <- symslist, b == b'
+        DataDef $ TyDef ty $ EvtDec ty | (_, (b', Ty ty)) <- symslist, b == b'
     ] ++ [
-        DataDef $ TyDef eventEnum $ SumDec eventEnum [(qualify (qualify "EVID", e), e) | Event e <- events_for g] -- a kludge to get it into the header
+        DataDef $ TyDef eventEnum $ SumDec eventEnum [(qualify (qualify "EVID", e), Box (eventTy e), eventField e) | Event (TagEvent e) <- events_for g] -- a kludge to get it into the header
             | (StateMachine smName, g) <- gs, let eventEnum = (\(Ty p :-> r) -> p) $ snd (syms ! TagFunction (qualify (smName, "Handle_Message")))
     ] ++ [
         FunDef (qualify n) args f [] [] | (n, f@(b', _ :-> _)) <- symslist, b == b'
@@ -432,7 +437,7 @@ lowerMachine cfg syms (StateMachine smName, g') = map (markUnused . boundArgs) $
             where f_name = qualify (smName, "Current_state_name")
 
         unhandledEventFun :: [(State TaggedName, Event TaggedName)] -> Event TaggedName -> Def QualifiedName
-        unhandledEventFun handler e@(Event evName) = FunDef f_name eventNames (Internal, Box (Ty evName) :-> Void) ds es
+        unhandledEventFun handler e@(Event (TagEvent evName)) = FunDef f_name eventNames (Internal, Box (eventTy evName) :-> Void) ds es
             where f_name = unhandled_f e
                   name_var = qualify "event_name"
                   event_var = head eventNames
@@ -499,7 +504,7 @@ lowerMachine cfg syms (StateMachine smName, g') = map (markUnused . boundArgs) $
         stateEventFun st h st' do_exit = FunDef f_name eventNames (Internal, ty) [] $ logAState ++ map ExprS es
             where f_name = qualify (sName st, mangleEv $ event h)
                   ty = case event h of
-                              (Event t) -> Box (Ty t) :-> Void
+                              (Event (TagEvent t)) -> Box (eventTy t) :-> Void
                               otherwise -> Void :-> Void
 
                   hIsEnter = case event h of EventEnter _ -> True; _ -> False

@@ -165,9 +165,9 @@ convertIR dodec dodef (aliases, ir) =
         convertTyDec :: TyDec (FullyQualAndEvent Identifier) -> SpecifierQualifierList
         convertTyDec (EvtDec ty)   = convertStruct ty
         convertTyDec (SumDec x cs) = taggedUnion
-            where (cxs, cvs) = unzip cs
+            where (cxs, cts, cvs) = unzip3 cs
                   tag = fromList [Left $ makeEnum "" $ map fullQual cxs]
-                  union = fromList [Left $ makeUnion "" $ map (uncurry convertDeclarator . (foldMap evtQual &&& Box . Ty . fmap fullQual)) cvs]
+                  union = fromList [Left $ makeUnion "" $ zipWith convertDeclarator (map fullQual cvs) (map (fmap fullQual) cts)]
                   taggedUnion = fromList [Left $ makeStruct (convertTName $ fmap fullQual x) [(tag, tag_name), (union, union_name)]]
                   tag_name = Declarator Nothing $ IDirectDeclarator id_field
                   union_name = Declarator Nothing $ IDirectDeclarator event_field
@@ -303,7 +303,6 @@ convertIR dodec dodef (aliases, ir) =
         convertVar (Field v f) = convertVar v `ARROW` fullQual f
 
         convertTName :: Tagged Identifier -> Identifier
-        convertTName (TagEvent x) = rename aliases $ x +-+ "t"
         convertTName t = foldMap id t
 
         apply :: PostfixExpression -> [AssignmentExpression] -> PostfixExpression
@@ -377,7 +376,7 @@ instance Backend CStaticOption where
                       smearish (FunDef x _ _ _ _) = x `elem` (basis ++ senders)
                       basis = map (rename aliases . qualify) ["debug_print", "free", "panic_print", "panic"]
                       senders = [qualify (smName, "Send_Message") | (StateMachine smName, _) <- gs]
-                      int = Ty $ TagState $ qualify "int"  -- a hack so bad it hurt to write.
+                      int = Ty $ TagBuiltin $ qualify "int"
                       main :: Def QualifiedName
                       main = FunDef (qualify "main") [] (External, Void :-> int) [] [
                             ExprS $ FunCall (qualify "SRT_init") [],
